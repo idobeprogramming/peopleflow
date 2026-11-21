@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "../..",
+    "types": ["node"],
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts", "../../packages/domain/src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}
