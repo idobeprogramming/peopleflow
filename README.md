@@ -15,16 +15,13 @@ Supabase.
 
 ```powershell
 npm install
-npx supabase start
-npx supabase db reset
-npm run dev
+npm run dev:local
 ```
 
 L’interface sera disponible sur `http://localhost:5173` et l’API sur
-`http://localhost:3000`. Sans identifiants Supabase dans `.env`, l’API utilise
-le seed fictif en mémoire. Pour tester Postgres, copiez `.env.example` vers
-`.env`, puis ajoutez-y `API_URL` comme `SUPABASE_URL` et `SERVICE_ROLE_KEY`
-comme `SUPABASE_SERVICE_ROLE_KEY` depuis `npx supabase status -o env`.
+`http://localhost:3000`. La commande applique les migrations en attente, vérifie les quatre tables
+et transmet la clé locale au processus serveur. Pour une démo en mémoire,
+utilisez `npm run dev` avec les variables Supabase absentes.
 
 La clé de service reste uniquement dans l’API. Ce projet est une démo locale;
 il faut ajouter l’authentification avant de l’exposer à Internet.

@@ -10,6 +10,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "check": "npm run test && npm run typecheck && npm run build",
+    "dev:local": "supabase start && supabase migration up --local && node scripts/dev-local.mjs",
+    "test:demo": "node --experimental-strip-types --test demo/directory.test.mjs",
     "db:start": "supabase start",
     "db:reset": "supabase db reset"
   },

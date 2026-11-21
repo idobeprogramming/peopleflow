@@ -1,4 +1,10 @@
-import type { Department, Employee } from '../../../../packages/domain/src/types.js'
+import type {
+  Activity,
+  Department,
+  CreateEmployeeInput,
+  Employee,
+  OnboardingTask,
+} from '../../../../packages/domain/src/types.js'
 
 const departments: Department[] = [
   { id: '20000000-0000-4000-8000-000000000001', name: 'Direction' },
@@ -144,10 +150,54 @@ const seedEmployees: Employee[] = [
   },
 ]
 
+const seedOnboardingTasks: OnboardingTask[] = [
+  {
+    id: '30000000-0000-4000-8000-000000000001',
+    employeeId: '10000000-0000-4000-8000-000000000003',
+    title: 'Préparer l’accès aux outils',
+    ownerName: 'Loïc Tremblay',
+    dueDate: dateFromToday(-1),
+    status: 'in_progress',
+    sortOrder: 1,
+  },
+  {
+    id: '30000000-0000-4000-8000-000000000002',
+    employeeId: '10000000-0000-4000-8000-000000000003',
+    title: 'Planifier la rencontre d’accueil',
+    ownerName: 'Jade Mercier',
+    dueDate: dateFromToday(1),
+    status: 'pending',
+    sortOrder: 2,
+  },
+  {
+    id: '30000000-0000-4000-8000-000000000003',
+    employeeId: '10000000-0000-4000-8000-000000000004',
+    title: 'Préparer l’équipement',
+    ownerName: 'Loïc Tremblay',
+    dueDate: dateFromToday(2),
+    status: 'pending',
+    sortOrder: 1,
+  },
+  {
+    id: '30000000-0000-4000-8000-000000000004',
+    employeeId: '10000000-0000-4000-8000-000000000004',
+    title: 'Partager le plan des premières semaines',
+    ownerName: 'Camille Fortin',
+    dueDate: dateFromToday(3),
+    status: 'pending',
+    sortOrder: 2,
+  },
+]
+
 export interface EmployeeRepository {
   listEmployees(): Promise<Employee[]>
   getEmployee(id: string): Promise<Employee | null>
   listDepartments(): Promise<Department[]>
+  listOnboardingTasks(employeeId?: string): Promise<OnboardingTask[]>
+  setTaskStatus(id: string, status: 'done' | 'pending'): Promise<OnboardingTask | null>
+  listActivity(): Promise<Activity[]>
+  updateEmployee(id: string, input: CreateEmployeeInput): Promise<Employee>
+  createEmployee(input: CreateEmployeeInput): Promise<Employee>
 }
 
 export function createMemoryEmployeeRepository(
@@ -155,7 +205,37 @@ export function createMemoryEmployeeRepository(
 ): EmployeeRepository {
   const employees = initialEmployees.map((employee) => ({ ...employee }))
 
+  const tasks = seedOnboardingTasks.map((task) => ({ ...task }))
+  const activity: Activity[] = []
+  function record(description: string) {
+    activity.unshift({ id: crypto.randomUUID(), description, createdAt: new Date().toISOString() })
+  }
   return {
+    async listActivity() { return activity.slice(0, 10) },
+    async setTaskStatus(id, status) {
+      const task = tasks.find((item) => item.id === id)
+      if (!task) return null
+      if (task.status !== status) {
+        task.status = status
+        record(task.title + (status === 'done' ? ' — terminée' : ' — rouverte'))
+      }
+      return { ...task }
+    },
+    async updateEmployee(id, input) {
+      const employee = employees.find((item) => item.id === id)
+      if (!employee) throw new Error('Employé introuvable.')
+      const manager = employees.find((item) => item.id === input.managerId)
+      Object.assign(employee, input, {
+        managerId: input.managerId ?? null,
+        managerName: manager ? manager.firstName + ' ' + manager.lastName : null,
+        departmentName: departments.find((item) => item.id === input.departmentId)!.name,
+      })
+      for (const report of employees.filter((item) => item.managerId === id)) {
+        report.managerName = employee.firstName + ' ' + employee.lastName
+      }
+      record(employee.firstName + ' ' + employee.lastName + ' — profil modifié')
+      return { ...employee }
+    },
     async listEmployees() {
       return employees.map((employee) => ({ ...employee }))
     },
@@ -165,6 +245,35 @@ export function createMemoryEmployeeRepository(
     },
     async listDepartments() {
       return departments.map((department) => ({ ...department }))
+    },
+    async listOnboardingTasks(employeeId) {
+      return tasks
+        .filter((task) => !employeeId || task.employeeId === employeeId)
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map((task) => ({ ...task }))
+    },
+    async createEmployee(input) {
+      const department = departments.find((item) => item.id === input.departmentId)
+      const manager = employees.find((item) => item.id === input.managerId)
+      const employee: Employee = {
+        id: crypto.randomUUID(),
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email: input.email,
+        jobTitle: input.jobTitle,
+        departmentId: input.departmentId,
+        departmentName: department?.name ?? 'Sans département',
+        managerId: input.managerId ?? null,
+        managerName: manager ? `${manager.firstName} ${manager.lastName}` : null,
+        status: input.status,
+        employmentType: input.employmentType,
+        hireDate: input.hireDate,
+        location: input.location,
+        createdAt: new Date().toISOString(),
+      }
+      employees.push(employee)
+      record(employee.firstName + ' ' + employee.lastName + ' — profil créé')
+      return { ...employee }
     },
   }
 }

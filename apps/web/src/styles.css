@@ -1,0 +1,125 @@
+:root {
+  font-family: "Inter", "Segoe UI", sans-serif;
+  color: #252539;
+  background: #f6f6fa;
+  --ink: #26233e;
+  --accent: #5744a4;
+  --muted: #625f72;
+  --line: #dfdee8;
+  --tint: #efedf9;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, select, input { font: inherit; color: inherit; }
+button { border: 0; background: transparent; cursor: pointer; }
+button:disabled { cursor: default; opacity: .55; }
+button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible {
+  outline: 3px solid #7969be;
+  outline-offset: 2px;
+}
+button, a { touch-action: manipulation; }
+h1, h2, p { margin: 0; }
+h1 { font-size: clamp(1.7rem, 3vw, 2.4rem); letter-spacing: -.045em; }
+h2 { font-size: 1.16rem; letter-spacing: -.025em; }
+small, .muted-cell, .metric-helper, .page-heading p { color: var(--muted); }
+.app-shell { display: grid; grid-template-columns: 224px minmax(0,1fr); min-height: 100vh; }
+.sidebar { background: var(--ink); color: white; padding: 26px 16px; display: flex; flex-direction: column; gap: 16px; }
+.brand, .nav-item, .sidebar-footer, .topbar-context, .topbar-actions, .topbar-user,
+.primary-button, .secondary-button, .date-button, .text-link, .manager-cell,
+.task-summary, .department-name, .search-field, .filter-controls, .filter-label,
+.manager-profile, .detail-row, .onboarding-summary span, .checklist-date {
+  display: inline-flex; align-items: center; gap: 9px;
+}
+.brand { color: inherit; text-decoration: none; padding: 4px 8px 18px; }
+.brand-mark { border-radius: 12px; padding: 2px 11px 7px; background: #c9bfff; color: var(--ink); font-size: 1.7rem; font-weight: 800; }
+.brand-copy, .profile-copy, .person-copy, .topbar-user-copy, .task-copy, .detail-row div, .checklist-copy { display: grid; gap: 3px; text-align: left; }
+.brand-copy strong { font-size: 1.3rem; }
+.brand-copy small, .sidebar-footer small { color: #cbc7da; }
+.workspace-label, .panel-kicker, .eyebrow, .brand-copy small { font-size: .67rem; font-weight: 750; letter-spacing: .09em; }
+.workspace-label { color: #c3bdd3; padding-left: 10px; }
+.side-nav, .help-card { display: grid; gap: 6px; }
+.nav-item { color: inherit; text-align: left; padding: 12px; border-radius: 8px; }
+.nav-item:hover, .nav-item.active, .help-card { background: #403953; }
+.nav-count, .profile-menu { margin-left: auto; }
+.sidebar-spacer { flex: 1; }
+.help-card { border-radius: 12px; padding: 16px; font-size: .85rem; }
+.help-card button { color: #e3dbff; text-align: left; padding: 6px 0; }
+.sidebar-footer { border-top: 1px solid #554e64; padding-top: 16px; }
+.main-area { min-width: 0; }
+.topbar, .page-heading, .panel-heading, .directory-toolbar, .table-footer, .drawer-topline,
+.dialog-heading, .report-total, .footer-progress-copy, .onboarding-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.topbar { min-height: 66px; background: white; padding: 10px clamp(16px,3vw,48px); border-bottom: 1px solid var(--line); }
+.page-content { max-width: 1500px; margin: auto; padding: clamp(16px,3vw,48px); }
+.page-stack, .dashboard-main-column, .dashboard-side-column { display: grid; gap: 20px; align-content: start; }
+.page-heading p { margin-top: 6px; }
+.eyebrow, .panel-kicker { color: var(--accent); margin-bottom: 7px; }
+.panel, .metric-card, .loading-state, .error-state { background: white; border: 1px solid var(--line); border-radius: 14px; padding: 20px; min-width: 0; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(175px,100%),1fr)); gap: 14px; }
+.metric-card { position: relative; }
+.metric-value { font-size: 2rem; font-weight: 720; }
+.metric-helper, .metric-trend, .task-due, .arrival-date, .task-counter { font-size: .8rem; }
+.metric-icon, .callout-icon { display: inline-flex; background: var(--tint); color: var(--accent); border-radius: 10px; padding: 8px; margin-bottom: 8px; }
+.metric-trend { position: absolute; top: 20px; right: 16px; }
+.dashboard-grid, .onboarding-page-grid { display: grid; grid-template-columns: minmax(0,3fr) minmax(0,2fr); gap: 20px; }
+.panel-heading { margin-bottom: 14px; }
+.onboarding-person, .arrival-row, .task-row, .department-row, .report-row, .onboarding-roster-row, .checklist-item {
+  width: 100%; display: flex; align-items: center; gap: 12px; padding: 14px 0; text-align: left; border-top: 1px solid var(--line);
+}
+.person-copy, .task-copy, .checklist-copy, .footer-progress { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.avatar, .manager-initial, .manager-avatar { display: inline-grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 50%; background: #e5dff7; color: #403365; font-weight: 700; }
+.avatar-coral { background: #f9d7c9; color: #723b2a; }
+.avatar-large { width: 60px; height: 60px; font-size: 1.35rem; }
+.progress-track, .department-bar, .report-bar { display: block; height: 6px; border-radius: 6px; background: var(--tint); overflow: hidden; }
+.progress-track > span, .department-bar > span, .report-bar > span { display: block; background: #8270c5; height: 100%; }
+.department-bar, .report-bar { flex: 1; }
+.progress-copy, .roster-progress { min-width: 68px; font-size: .82rem; }
+.count-badge, .status-pill, .task-counter, .checklist-state { background: var(--tint); padding: 4px 8px; border-radius: 14px; font-size: .78rem; white-space: nowrap; }
+.status-active, .task-state-done { background: #ddf1e9; color: #275a48; }
+.primary-button, .secondary-button, .date-button, input, select { border-radius: 7px; padding: 9px 12px; border: 1px solid var(--line); background: white; }
+.primary-button { background: var(--accent); color: white; border-color: var(--accent); }
+.text-link, .panel-bottom-link { color: var(--accent); font-weight: 600; }
+.panel-bottom-link, .onboarding-footer, .arrival-callout, .checklist-footer, .report-total { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
+.table-scroll { overflow-x: auto; }
+.employee-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.employee-table th, .employee-table td { padding: 12px 8px; text-align: left; border-bottom: 1px solid var(--line); }
+.employee-table th { color: var(--muted); font-size: .8rem; }
+.employee-cell { display: flex; align-items: center; gap: 10px; }
+.directory-toolbar, .filter-controls { flex-wrap: wrap; }
+.directory-toolbar, .table-footer { padding: 10px 0; }
+.table-empty, .empty-inline { padding: 20px; color: var(--muted); }
+.table-empty { display: grid; justify-items: center; gap: 8px; }
+.drawer-backdrop { position: fixed; inset: 0; background: #211e3659; z-index: 5; display: flex; overflow: auto; }
+.employee-drawer, .create-dialog { background: white; padding: 24px; width: min(100%,480px); overflow-y: auto; }
+.employee-drawer { margin-left: auto; }
+.create-dialog { margin: auto; max-height: 100%; border-radius: 14px; }
+.drawer-identity, .drawer-section, .detail-row, .form-grid { margin-top: 18px; }
+.form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.form-grid label { display: grid; gap: 5px; font-size: .85rem; }
+.form-grid input, .form-grid select { min-width: 0; }
+.form-span { grid-column: 1 / -1; }
+.drawer-actions, .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+.form-error, .error-state { color: #922c3e; }
+.toast-message { position: fixed; bottom: 18px; right: 18px; background: var(--ink); color: white; padding: 12px 18px; border-radius: 8px; z-index: 6; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 1000px) {
+  .dashboard-grid, .onboarding-page-grid { grid-template-columns: minmax(0,1fr); }
+}
+@media (max-width: 760px) {
+  .app-shell { display: block; }
+  .sidebar { padding: 12px; gap: 8px; }
+  .brand { padding: 0; }
+  .side-nav { display: flex; overflow-x: auto; }
+  .nav-item { padding: 8px; }
+  .sidebar-spacer, .workspace-label, .help-card, .settings-link, .sidebar-footer { display: none; }
+  .page-heading, .onboarding-footer, .panel-heading, .directory-toolbar, .checklist-item { flex-wrap: wrap; }
+  .topbar { min-height: 50px; }
+  .topbar-user-copy { display: none; }
+}
+@media (max-width: 480px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .side-nav .nav-item { flex-direction: column; font-size: .8rem; }
+  .nav-count { display: none; }
+  .onboarding-person, .onboarding-roster-row { flex-wrap: wrap; }
+}

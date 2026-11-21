@@ -1,9 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 import type {
+  CreateEmployeeInput,
   Department,
   Employee,
   EmployeeStatus,
   EmploymentType,
+  OnboardingTask,
+  OnboardingTaskStatus,
 } from '../../../../packages/domain/src/types.js'
 import {
   createMemoryEmployeeRepository,
@@ -28,6 +31,16 @@ interface EmployeeRow {
 interface DepartmentRow {
   id: string
   name: string
+}
+
+interface OnboardingTaskRow {
+  id: string
+  employee_id: string
+  title: string
+  owner_name: string
+  due_date: string
+  status: OnboardingTaskStatus
+  sort_order: number
 }
 
 export function createSupabaseEmployeeRepository(
@@ -92,7 +105,41 @@ export function createSupabaseEmployeeRepository(
     }))
   }
 
+  function employeeValues(input: CreateEmployeeInput) {
+    return {
+      first_name: input.firstName,
+      last_name: input.lastName,
+      email: input.email,
+      job_title: input.jobTitle,
+      department_id: input.departmentId,
+      manager_id: input.managerId ?? null,
+      status: input.status,
+      employment_type: input.employmentType,
+      hire_date: input.hireDate,
+      location: input.location,
+    }
+  }
+
   return {
+    async listActivity() {
+      const { data, error } = await client.from('audit_events')
+        .select('id, description, createdAt:created_at').order('created_at', { ascending: false }).limit(10)
+      if (error) throw error
+      return data ?? []
+    },
+    async setTaskStatus(id, status) {
+      const { data, error } = await client.from('onboarding_tasks').update({ status }).eq('id', id)
+        .select('id, employeeId:employee_id, title, ownerName:owner_name, dueDate:due_date, status, sortOrder:sort_order').maybeSingle()
+      if (error) throw error
+      return data as OnboardingTask | null
+    },
+    async updateEmployee(id, input) {
+      const { error } = await client.from('employees').update(employeeValues(input)).eq('id', id)
+      if (error) throw error
+      const employee = await this.getEmployee(id)
+      if (!employee) throw new Error('Employé introuvable.')
+      return employee
+    },
     async listEmployees() {
       return mapEmployees(await fetchEmployeeRows())
     },
@@ -102,6 +149,41 @@ export function createSupabaseEmployeeRepository(
       return employee ?? null
     },
     listDepartments: fetchDepartments,
+    async listOnboardingTasks(employeeId) {
+      let query = client
+        .from('onboarding_tasks')
+        .select('id, employee_id, title, owner_name, due_date, status, sort_order')
+        .order('sort_order')
+
+      if (employeeId) query = query.eq('employee_id', employeeId)
+
+      const { data, error } = await query
+
+      if (error) throw new Error(`Could not load onboarding tasks: ${error.message}`)
+
+      return ((data ?? []) as OnboardingTaskRow[]).map((row): OnboardingTask => ({
+        id: row.id,
+        employeeId: row.employee_id,
+        title: row.title,
+        ownerName: row.owner_name,
+        dueDate: row.due_date,
+        status: row.status,
+        sortOrder: row.sort_order,
+      }))
+    },
+    async createEmployee(input: CreateEmployeeInput) {
+      const { error } = await client.from('employees').insert(employeeValues(input))
+
+      if (error) throw new Error(`Could not create employee: ${error.message}`)
+
+      const employee = (await mapEmployees(await fetchEmployeeRows())).find(
+        (item) => item.email === input.email,
+      )
+
+      if (!employee) throw new Error('Created employee could not be reloaded.')
+
+      return employee
+    },
   }
 }
 
