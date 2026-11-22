@@ -6,6 +6,7 @@ export const MAX_CHANGED_LINES = 400
 const IGNORED_FOR_SIZE = ['package-lock.json']
 const TEST_FILE = /\.(test|spec)\.(m?[jt]sx?)$/
 const ASSERTION = /\b(expect|assert(\.\w+)?)\s*\(/
+const DEPENDENCY_LINE = /^\s*"[@\w./-]+":\s*"(npm:|[\^~<>=]*\d|latest|\*|git|github:|https?:|file:)/
 const DESTRUCTIVE_SQL = /\b(drop\s+(table|column|schema|type|index|view|function)|truncate\b|delete\s+from|alter\s+table\s+[\w."]+\s+(drop|alter\s+column\s+[\w"]+\s+(set\s+not\s+null|type)))/i
 const SECRET_PATTERNS = [
   { name: 'clé OpenAI ou Anthropic', pattern: /\bsk-(ant-)?[A-Za-z0-9_-]{20,}/ },
@@ -72,6 +73,12 @@ export function checkDiff(files, { labels = [], maxLines = MAX_CHANGED_LINES } =
       if (file.isDeleted || changedAssertions.length > 0) {
         human.push({ rule: 'weakened-test', message: `Assertion retirée ou réécrite dans ${file.path}` })
       }
+    }
+    // New or changed packages run install scripts in CI; a person checks them first.
+    const touchesDependencies = file.path.endsWith('package-lock.json')
+      || (file.path.endsWith('package.json') && [...file.added, ...file.removed].some((line) => DEPENDENCY_LINE.test(line)))
+    if (touchesDependencies) {
+      human.push({ rule: 'dependency-change', message: `Dépendances ajoutées ou modifiées : ${file.path}` })
     }
     for (const line of file.added) {
       const secret = SECRET_PATTERNS.find(({ pattern }) => pattern.test(line))

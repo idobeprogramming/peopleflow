@@ -51,7 +51,16 @@ jobs:
       RUN_ID: ${{ github.event.workflow_run.id }}
       COMMENT_PR: ${{ github.event.issue.number }}
       COMMENT_BODY: ${{ github.event.comment.body }}
+      COMMENTER: ${{ github.event.comment.user.login }}
     steps:
+      - name: Vérifier le droit d'écriture de l'auteur du commentaire
+        if: github.event_name == 'issue_comment'
+        run: |
+          permission=$(gh api "repos/$REPO/collaborators/$COMMENTER/permission" --jq .permission || echo none)
+          case "$permission" in
+            admin|maintain|write) ;;
+            *) echo "::error::$COMMENTER n'a pas le droit d'écriture; /agent fix ignoré."; exit 1 ;;
+          esac
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
@@ -136,11 +145,11 @@ jobs:
           path: .agent
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - name: Correction par Claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1
         with:
           # Either a Console API key or a subscription token from `claude setup-token` (Pro/Max).
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -149,7 +158,7 @@ jobs:
           prompt: Lis scripts/agent/fix.prompt.md et suis exactement ses consignes.
           claude_args: >-
             --max-turns 60
-            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm ci),Bash(npm test:*),Bash(npm run:*),Bash(npx vitest:*),Bash(npx tsc:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(ls:*)"
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm ci),Bash(npm test:*),Bash(npm run:*),Bash(npx vitest:*),Bash(npx tsc:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(ls:*)"
             ${{ vars.AGENT_MODEL && format('--model {0}', vars.AGENT_MODEL) || '' }}
       - name: Exporter le patch
         env:
@@ -228,6 +237,12 @@ jobs:
         with:
           ref: ${{ needs.context.outputs.branch }}
           token: ${{ steps.app.outputs.token }}
+      - name: Scripts de confiance (branche par défaut)
+        uses: actions/checkout@v5
+        with:
+          path: trusted
+          sparse-checkout: scripts/agent
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: proposal
@@ -242,7 +257,7 @@ jobs:
           git -c user.name='peopleflow-agent[bot]' -c user.email='peopleflow-agent[bot]@users.noreply.github.com' \
             commit -q -m "fix: correction automatique $ATTEMPT/2" -m "$summary"
           git push origin "HEAD:$BRANCH"
-          node scripts/agent/cli.mjs report "$RUNNER_TEMP/proposal/report.json" > /dev/null
+          node trusted/scripts/agent/cli.mjs report "$RUNNER_TEMP/proposal/report.json" > /dev/null
           gh pr comment "$PR" --body-file "$RUNNER_TEMP/proposal/report.md"
 
   stopped:

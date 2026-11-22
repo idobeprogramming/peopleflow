@@ -1,13 +1,13 @@
 # Mise en service du workflow automatisé
 
 Tout ce qui vit dans le dépôt est prêt. Ce document liste ce qui demande tes comptes
-(GitHub, OpenAI, Anthropic, hébergeur). Compter 30 à 45 minutes la première fois.
+(GitHub, Anthropic, hébergeur). Compter 30 à 45 minutes la première fois.
 
-## 1. Pousser le dépôt
+## 1. Règle de base
 
-```powershell
-git push origin main
-```
+`main` et `staging` sont protégées : tout changement passe par une PR vers `staging`,
+puis par la PR de promotion vers `main`. Voir
+[`BRANCHING_AND_RELEASES.md`](./BRANCHING_AND_RELEASES.md).
 
 ## 2. Configurer GitHub (script)
 
@@ -16,7 +16,7 @@ Créer un jeton à grain fin limité au dépôt, avec **Administration**, **Cont
 
 ```powershell
 $env:GH_TOKEN = 'github_pat_...'
-.\scripts\setup-github.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-github.ps1
 Remove-Item Env:GH_TOKEN
 ```
 
@@ -96,9 +96,19 @@ Dans GitHub, **par environnement** (`staging`, puis `production`) :
 Au niveau du dépôt : secret `SUPABASE_ACCESS_TOKEN` (jeton personnel Supabase) et variable
 `STAGING_URL` (utilisée dans les commentaires et le rapport quotidien).
 
-Chaque étape absente est sautée avec un avis dans le journal. La CI ne casse pas pour autant.
+Le déploiement reste désactivé tant que la variable de dépôt `DEPLOY_ENABLED` ne vaut pas
+`true`. Sans elle, la CI construit quand même l'image Docker pour vérifier le `Dockerfile`,
+mais ne publie rien et ne crée aucune release. Une fois activé, chaque étape dont le
+secret manque est sautée avec un avis dans le journal.
 
-## 6. Premier essai
+## 6. Sécurité
+
+`setup-github.ps1` active aussi le secret scanning, la push protection (un push contenant
+une clé est bloqué avant d'arriver sur GitHub), le signalement privé de vulnérabilités
+(`SECURITY.md`) et l'approbation obligatoire des workflows venant de forks. Le modèle
+d'accès et le risque résiduel sont décrits dans [`SECURITY.md`](../SECURITY.md).
+
+## 7. Premier essai
 
 1. Ouvrir une issue avec le modèle **Bogue**, titrée
    « [démo] Ventes et En accueil affichent 3 personnes au lieu de Nicolas Gagnon ».

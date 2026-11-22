@@ -36,6 +36,10 @@ function Invoke-GitHub([string]$Method, [string]$Uri, $Body = $null) {
   Invoke-RestMethod @parameters
 }
 
+function Test-PlanLimit($ErrorRecord) {
+  return "$ErrorRecord" -match 'Upgrade to GitHub Pro|make this repository public'
+}
+
 function Step([string]$Message) { Write-Host "`n▶ $Message" -ForegroundColor Cyan }
 
 Step 'Réglages du dépôt (squash pour les fonctionnalités, commit de fusion pour la promotion, auto-merge)'
@@ -49,6 +53,31 @@ Step 'Jeton GITHUB_TOKEN en lecture seule par défaut'
 Invoke-GitHub PUT "$api/actions/permissions/workflow" @{
   default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $false
 } | Out-Null
+
+Step 'Sécurité : secret scanning, push protection, signalement privé, forks'
+try {
+  Invoke-GitHub PATCH $api @{
+    security_and_analysis = @{
+      secret_scanning = @{ status = 'enabled' }
+      secret_scanning_push_protection = @{ status = 'enabled' }
+    }
+  } | Out-Null
+  Invoke-GitHub PUT "$api/private-vulnerability-reporting" | Out-Null
+  Write-Host '  secret scanning, push protection et signalement privé activés.'
+} catch {
+  if (-not (Test-PlanLimit $_)) { throw }
+  Write-Warning 'Secret scanning indisponible sur un dépôt privé avec un compte gratuit.'
+  $script:limited += 'secret scanning et push protection'
+}
+# Workflows from forks wait for approval, whoever opens the PR.
+try {
+  Invoke-GitHub PUT "$api/actions/permissions/fork-pr-contributor-approval" @{
+    approval_policy = 'all_external_contributors'
+  } | Out-Null
+  Write-Host '  workflows de forks : approbation requise pour tout contributeur externe.'
+} catch {
+  Write-Warning "Réglage des forks refusé ($($_.Exception.Message)). Le faire dans Settings → Actions → General."
+}
 
 Step 'Labels'
 $labels = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot '..\.github\labels.json') | ConvertFrom-Json
@@ -73,14 +102,10 @@ try {
   Write-Host "  staging créée depuis main ($($main.object.sha.Substring(0, 7)))."
 }
 
-function Test-PlanLimit($ErrorRecord) {
-  return "$ErrorRecord" -match 'Upgrade to GitHub Pro|make this repository public'
-}
-
-function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear) {
+function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear, [bool]$UpToDate) {
   try {
   Invoke-GitHub PUT "$api/branches/$Branch/protection" @{
-    required_status_checks = @{ strict = $true; contexts = $RequiredChecks }
+    required_status_checks = @{ strict = $UpToDate; contexts = $RequiredChecks }
     enforce_admins = $EnforceAdmins
     required_pull_request_reviews = @{
       dismiss_stale_reviews = $true; require_code_owner_reviews = $true; required_approving_review_count = 1
@@ -100,10 +125,13 @@ function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear) {
 }
 
 Step 'Protection des branches'
-# main: merge commits from the staging promotion PR, no admin bypass.
-Protect 'main' $true $false
-# staging: squash only; the owner keeps admin bypass for their own PRs (a solo owner cannot approve them).
-Protect 'staging' $false $true
+# main: merge commits from the staging promotion PR, no admin bypass. Not "up to date":
+# each promotion adds a merge commit that linear staging can never contain, and the PR's
+# CI already tests staging merged into main.
+Protect 'main' $true $false $false
+# staging: squash only, up to date before merge; the owner keeps admin bypass for their own
+# PRs (a solo owner cannot approve them).
+Protect 'staging' $false $true $true
 
 Step 'Environnements staging et production'
 $me = Invoke-RestMethod -Uri 'https://api.github.com/user' -Headers $headers
@@ -150,5 +178,6 @@ Fait. Il reste ce que ce script ne peut pas faire pour toi (voir docs/AUTOMATION
      puis : variable AGENT_APP_ID + secret AGENT_APP_PRIVATE_KEY.
   2. Secret CLAUDE_CODE_OAUTH_TOKEN (abonnement Pro/Max : claude setup-token)
      ou ANTHROPIC_API_KEY (clé API).
-  3. Pour déployer : secrets et variables des environnements staging et production.
+  3. Pour déployer : variable DEPLOY_ENABLED=true, puis secrets et variables des
+     environnements staging et production.
 "@ -ForegroundColor Green
