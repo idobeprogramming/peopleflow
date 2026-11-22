@@ -102,13 +102,13 @@ try {
   Write-Host "  staging créée depuis main ($($main.object.sha.Substring(0, 7)))."
 }
 
-function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear, [bool]$UpToDate) {
+function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear, [bool]$UpToDate, [int]$Approvals) {
   try {
   Invoke-GitHub PUT "$api/branches/$Branch/protection" @{
     required_status_checks = @{ strict = $UpToDate; contexts = $RequiredChecks }
     enforce_admins = $EnforceAdmins
     required_pull_request_reviews = @{
-      dismiss_stale_reviews = $true; require_code_owner_reviews = $true; required_approving_review_count = 1
+      dismiss_stale_reviews = $true; require_code_owner_reviews = ($Approvals -gt 0); required_approving_review_count = $Approvals
     }
     restrictions = $null
     required_linear_history = $Linear
@@ -125,13 +125,13 @@ function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear, [bool]$Up
 }
 
 Step 'Protection des branches'
-# main: merge commits from the staging promotion PR, no admin bypass. Not "up to date":
-# each promotion adds a merge commit that linear staging can never contain, and the PR's
+# main: merge commits from the staging promotion PR, one approval, no admin bypass. Not "up to
+# date": each promotion adds a merge commit that linear staging can never contain, and the PR's
 # CI already tests staging merged into main.
-Protect 'main' $true $false $false
-# staging: squash only, up to date before merge; the owner keeps admin bypass for their own
-# PRs (a solo owner cannot approve them).
-Protect 'staging' $false $true $true
+Protect 'main' $true $false $false 1
+# staging: PR and green checks, squash only, no approval (a solo owner cannot approve their own
+# PRs) and no admin bypass either. Agent PRs never auto-merge: a person's merge is the review.
+Protect 'staging' $true $true $true 0
 
 Step 'Environnements staging et production'
 $me = Invoke-RestMethod -Uri 'https://api.github.com/user' -Headers $headers

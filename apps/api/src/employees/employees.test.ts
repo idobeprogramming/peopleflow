@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createApp } from '../app.js'
+import { createSignedInApp } from '../test-session.js'
 import { createMemoryEmployeeRepository } from './memory-repository.js'
 
 describe('employee directory API', () => {
@@ -17,7 +17,7 @@ describe('employee directory API', () => {
   }
 
   it('returns the fictional seed employees with their department', async () => {
-    const response = await createApp(createMemoryEmployeeRepository()).request(
+    const response = await (await createSignedInApp(createMemoryEmployeeRepository())).request(
       '/api/employees',
     )
     const employees = await response.json()
@@ -33,7 +33,7 @@ describe('employee directory API', () => {
   })
 
   it('filters by department and employment status', async () => {
-    const response = await createApp(createMemoryEmployeeRepository()).request(
+    const response = await (await createSignedInApp(createMemoryEmployeeRepository())).request(
       '/api/employees?departmentId=20000000-0000-4000-8000-000000000002&status=onboarding',
     )
     const employees = await response.json()
@@ -47,7 +47,7 @@ describe('employee directory API', () => {
   })
 
   it('returns departments for the filter controls', async () => {
-    const response = await createApp(createMemoryEmployeeRepository()).request(
+    const response = await (await createSignedInApp(createMemoryEmployeeRepository())).request(
       '/api/departments',
     )
     const departments = await response.json()
@@ -59,7 +59,7 @@ describe('employee directory API', () => {
   })
 
   it('returns seeded onboarding tasks and filters them by employee', async () => {
-    const response = await createApp(createMemoryEmployeeRepository()).request(
+    const response = await (await createSignedInApp(createMemoryEmployeeRepository())).request(
       '/api/onboarding-tasks?employeeId=10000000-0000-4000-8000-000000000003',
     )
     const tasks = await response.json()
@@ -73,7 +73,7 @@ describe('employee directory API', () => {
   })
 
   it('creates an employee and returns the completed profile', async () => {
-    const response = await createApp(createMemoryEmployeeRepository()).request(
+    const response = await (await createSignedInApp(createMemoryEmployeeRepository())).request(
       '/api/employees',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newEmployee) },
     )
@@ -89,7 +89,7 @@ describe('employee directory API', () => {
   })
 
   it('rejects an invalid email address', async () => {
-    const response = await createApp(createMemoryEmployeeRepository()).request(
+    const response = await (await createSignedInApp(createMemoryEmployeeRepository())).request(
       '/api/employees',
       {
         method: 'POST',
@@ -102,7 +102,7 @@ describe('employee directory API', () => {
     expect(await response.json()).toMatchObject({ error: 'Données invalides.' })
   })
   it('saves edited profiles while preserving their identity', async () => {
-    const app = createApp()
+    const app = await createSignedInApp()
     const id = '10000000-0000-4000-8000-000000000003'
     const response = await app.request('/api/employees/' + id, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -115,7 +115,7 @@ describe('employee directory API', () => {
   })
 
   it('logs completion and reopening once per change', async () => {
-    const app = createApp()
+    const app = await createSignedInApp()
     const path = '/api/onboarding-tasks/30000000-0000-4000-8000-000000000001'
     for (const status of ['done', 'done', 'pending']) {
       const response = await app.request(path, {

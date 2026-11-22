@@ -27,14 +27,14 @@ Le script est rejouable. Il :
 - met `GITHUB_TOKEN` en lecture seule par défaut;
 - crée les labels de `.github/labels.json`;
 - crée `staging` depuis `main`;
-- protège `main` et `staging` (CI obligatoire, 1 approbation, CODEOWNERS);
+- protège `staging` (PR et CI obligatoires, sans exception) et `main` (en plus, 1 approbation
+  et CODEOWNERS);
 - crée les environnements `staging` et `production` (production exige ton approbation).
 
 **Dépôt privé avec un compte gratuit :** GitHub refuse la protection de branches et
-l'approbation des déploiements. Le script le signale et continue. L'agent n'active alors
-jamais l'auto-merge (sur une branche non protégée, il fusionnerait sans attendre) : ses PR
-restent ouvertes jusqu'à ta fusion. Rendre le dépôt public ou passer à GitHub Pro, puis
-relancer le script, active tout.
+l'approbation des déploiements. Le script le signale et continue. Rendre le dépôt public ou
+passer à GitHub Pro, puis relancer le script, active tout. Dans tous les cas, l'agent n'active
+jamais l'auto-merge : ses PR attendent ta fusion.
 
 ## 3. Créer la GitHub App de l'agent
 
@@ -79,9 +79,10 @@ Recommandé : un service web **Render** à partir d'une image (`ghcr.io/idobepro
 et un projet **Supabase** par environnement. N'importe quel hébergeur avec un
 « deploy hook » qui accepte `imgURL` fonctionne aussi.
 
-Variables d'environnement du service (sur l'hébergeur) :
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD`.
-L'image refuse de démarrer sans auth Basic : l'application n'a pas encore de connexion.
+Variables d'environnement du service (sur l'hébergeur) : `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, `DEMO_ACCOUNT=true` pour afficher le compte de démo sur la page
+de connexion, et `TRUST_PROXY=true` derrière le proxy de l'hébergeur (adresse IP réelle pour
+la limite de tentatives). En production l'image active les cookies `Secure` et `__Host-`.
 
 Dans GitHub, **par environnement** (`staging`, puis `production`) :
 
@@ -91,7 +92,7 @@ Dans GitHub, **par environnement** (`staging`, puis `production`) :
 | `SUPABASE_PROJECT_REF` | variable | Référence du projet Supabase |
 | `SUPABASE_DB_PASSWORD` | secret | Mot de passe de la base |
 | `DEPLOY_HOOK` | secret | URL du deploy hook de l'hébergeur |
-| `BASIC_AUTH` | secret | `utilisateur:motdepasse`, pour les smoke tests |
+| `SMOKE_LOGIN` | secret | `courriel:motdepasse` d'un compte de test, pour que les smoke tests se connectent |
 
 Au niveau du dépôt : secret `SUPABASE_ACCESS_TOKEN` (jeton personnel Supabase) et variable
 `STAGING_URL` (utilisée dans les commentaires et le rapport quotidien).
@@ -108,7 +109,15 @@ une clé est bloqué avant d'arriver sur GitHub), le signalement privé de vuln�
 (`SECURITY.md`) et l'approbation obligatoire des workflows venant de forks. Le modèle
 d'accès et le risque résiduel sont décrits dans [`SECURITY.md`](../SECURITY.md).
 
-## 7. Premier essai
+## 7. Signalement des échecs
+
+`pipeline-alerts.yml` surveille les workflows de l'agent, la promotion, le rapport quotidien, la
+synchronisation de la démo et la CI des pushes sur `staging` et `main`. À chaque échec, il ouvre
+une issue `incident` + `needs-human` (ou la complète si elle est déjà ouverte) avec les étapes en
+échec, la fin du journal et un diagnostic de Claude en lecture seule. Claude propose un
+correctif mais ne l'applique jamais : l'agent ne modifie pas les règles qui l'encadrent.
+
+## 8. Premier essai
 
 1. Ouvrir une issue avec le modèle **Bogue**, titrée
    « [démo] Ventes et En accueil affichent 3 personnes au lieu de Nicolas Gagnon ».

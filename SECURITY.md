@@ -12,8 +12,17 @@ Réponse visée : 7 jours.
 | Ouvrir une issue, commenter | tout le monde (dépôt public) |
 | Lancer l'agent (`agent:ready`) | droit d'écriture, revérifié par l'API dans le workflow |
 | `/agent fix` sur une PR | droit d'écriture, revérifié par l'API |
-| Fusionner dans `staging` ou `main` | PR, 4 checks verts, approbation du propriétaire (CODEOWNERS) |
+| Fusionner dans `staging` | PR et 4 checks verts, sans exception (admin compris); une PR d'agent n'est jamais fusionnée automatiquement |
+| Fusionner dans `main` | PR de promotion, 4 checks verts, approbation du propriétaire, sans exception |
 | Déployer en production | approbation de l'environnement `production` |
+
+## Authentification de l'application
+
+Mots de passe en scrypt (paramètres OWASP), sessions opaques côté serveur dont seul le SHA-256
+est stocké, cookie `__Host-` `HttpOnly` `Secure` `SameSite=Strict`, limite de tentatives,
+contrôle d'`Origin` et CSP. Détails dans le README. Le compte de démonstration est public par
+conception : `DEMO_ACCOUNT` doit rester désactivé, et ce compte supprimé, dans un déploiement
+avec de vraies données.
 
 ## Ce que l'agent peut et ne peut pas faire
 

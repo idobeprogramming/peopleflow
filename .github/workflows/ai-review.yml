@@ -31,7 +31,7 @@ jobs:
       - if: env.HAS_KEY != 'true'
         run: echo "::notice::Ni CLAUDE_CODE_OAUTH_TOKEN ni ANTHROPIC_API_KEY; revue IA ignorée."
       - if: env.HAS_KEY == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -42,6 +42,8 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
+          # Agent PRs are opened by the agent's GitHub App. Allow that one bot, not every bot.
+          allowed_bots: peopleflow-agent
           prompt: |
             Dépôt ${{ github.repository }}, pull request #${{ github.event.pull_request.number }}.
             Lis scripts/agent/review.prompt.md et suis exactement ses consignes.
