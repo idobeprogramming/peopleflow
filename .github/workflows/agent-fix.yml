@@ -52,7 +52,7 @@ jobs:
       COMMENT_PR: ${{ github.event.issue.number }}
       COMMENT_BODY: ${{ github.event.comment.body }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           sparse-checkout: scripts/agent
@@ -109,7 +109,7 @@ jobs:
           fi
           ls -la .agent
       - if: steps.attempt.outputs.proceed == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fix-context
           path: .agent/
@@ -126,15 +126,15 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.context.outputs.head_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: fix-context
           path: .agent
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -163,7 +163,7 @@ jobs:
             echo "::error::L'agent n'a rien changé; voir son rapport dans les artefacts."
             exit 1
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: proposal
           path: ${{ runner.temp }}/out/
@@ -180,12 +180,12 @@ jobs:
       verdict: ${{ steps.guard.outputs.verdict }}
       comment: ${{ steps.guard.outputs.comment }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.context.outputs.head_sha }}
           persist-credentials: false
           sparse-checkout: scripts/agent
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: proposal
           path: ${{ runner.temp }}/proposal
@@ -220,15 +220,15 @@ jobs:
       ATTEMPT: ${{ needs.context.outputs.attempt }}
     steps:
       - id: app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.AGENT_APP_ID }}
           private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.context.outputs.branch }}
           token: ${{ steps.app.outputs.token }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: proposal
           path: ${{ runner.temp }}/proposal

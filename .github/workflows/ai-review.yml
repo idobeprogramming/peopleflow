@@ -28,7 +28,7 @@ jobs:
       - if: env.HAS_KEY != 'true'
         run: echo "::notice::Ni CLAUDE_CODE_OAUTH_TOKEN ni ANTHROPIC_API_KEY; revue IA ignorée."
       - if: env.HAS_KEY == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
