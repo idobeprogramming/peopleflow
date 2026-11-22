@@ -41,7 +41,7 @@ jobs:
       - &setup-node
         uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - name: Tests unitaires
@@ -107,6 +107,17 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  image:
+    name: Image Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - *checkout
+      - *download-patch
+      - *apply-patch
+      - name: Construire l'image (sans la publier)
+        run: docker build --build-arg APP_VERSION="$GITHUB_SHA" -t peopleflow:check .
 
   secrets:
     name: Scan de secrets
