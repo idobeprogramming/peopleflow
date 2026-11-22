@@ -57,13 +57,17 @@ Les PR ouvertes avec `GITHUB_TOKEN` ne déclenchent pas la CI. L'agent publie do
 
 | Nom | Type | Usage | Obligatoire |
 | --- | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | secret | Claude : triage, implémentation, correction et revue | oui |
+| `CLAUDE_CODE_OAUTH_TOKEN` | secret | Claude avec ton abonnement Pro/Max (`claude setup-token`) | l'un des deux |
+| `ANTHROPIC_API_KEY` | secret | Claude avec une clé API de console.anthropic.com (facturé à l'usage) | l'un des deux |
 | `AGENT_MODEL` | variable | Modèle Claude pour coder (ex. `claude-opus-5-5`) | non |
 | `AGENT_TRIAGE_MODEL` | variable | Modèle plus léger pour le triage (ex. `claude-haiku-5-5`) | non |
 | `AGENT_BASE_BRANCH` | variable | Branche cible (défaut `staging`) | non |
 | `AI_REVIEW` | variable | `off` pour couper la revue IA | non |
 
-Mettre une limite de dépense mensuelle sur le compte Anthropic (console.anthropic.com).
+Avec un abonnement, chaque issue consomme ton quota Claude (triage, implémentation, revue,
+corrections) : le même que tu utilises dans l'app et dans Claude Code. Le jeton est lié à ton
+compte, à réserver à un dépôt personnel. Avec une clé API, mettre une limite de dépense
+mensuelle sur console.anthropic.com.
 
 La revue IA utilise aussi Claude, dans une session séparée qui ne voit que le diff, l'issue
 et ses propres consignes, jamais le raisonnement de l'implémentation. C'est moins
