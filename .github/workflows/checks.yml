@@ -1,0 +1,122 @@
+# Shared verification. Called by CI for every push/PR and by the agent workflows on a fresh
+# checkout with the agent's patch applied, so humans and agents pass exactly the same gates.
+name: Checks
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to check out. Empty means the triggering commit.
+        type: string
+        default: ''
+      patch-artifact:
+        description: Name of an artifact holding proposal.patch to apply before checking.
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Tests, typage et build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - &checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - &download-patch
+        if: inputs.patch-artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.patch-artifact }}
+          path: ${{ runner.temp }}/proposal
+      - &apply-patch
+        name: Appliquer le patch proposé
+        if: inputs.patch-artifact != ''
+        run: git apply --index "$RUNNER_TEMP/proposal/proposal.patch"
+      - &setup-node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Tests unitaires
+        run: npm test
+      - name: Scénario de démonstration
+        run: npm run test:demo
+      - name: Tests des garde-fous de l'agent
+        run: npm run test:agent
+      - name: Typage
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Aucune clé serveur dans le bundle web
+        run: |
+          if grep -rIlE 'service_role|SERVICE_ROLE|sb_secret_' apps/web/dist; then
+            echo "::error::Le bundle web contient une référence à une clé serveur."
+            exit 1
+          fi
+
+  database:
+    name: Migrations Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - *checkout
+      - *download-patch
+      - *apply-patch
+      - *setup-node
+      - run: npm ci
+      - name: Démarrer Supabase (migrations + seed)
+        run: npx --no-install supabase start
+      - name: Réinitialiser une deuxième fois (le seed doit être rejouable)
+        run: npx --no-install supabase db reset --local
+      - name: Lint du schéma
+        run: npx --no-install supabase db lint --local --fail-on error
+      - name: Tests d'intégration contre la base locale
+        run: npm run test:integration
+      - name: Arrêter Supabase
+        if: always()
+        run: npx --no-install supabase stop --no-backup
+
+  e2e:
+    name: Parcours E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - *download-patch
+      - *apply-patch
+      - *setup-node
+      - run: npm ci
+      - name: Installer Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Parcours annuaire, création d'employé et accueil
+        run: npm run test:e2e
+        env:
+          CI: 'true'
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_attempt }}${{ inputs.patch-artifact != '' && '-proposal' || '' }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  secrets:
+    name: Scan de secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - *checkout
+      - *download-patch
+      - *apply-patch
+      - name: gitleaks sur l'arbre de travail
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.21.2 \
+            detect --no-git --source /repo --redact --no-banner --exit-code 1
