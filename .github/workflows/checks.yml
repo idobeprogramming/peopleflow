@@ -24,13 +24,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - &checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - &download-patch
         if: inputs.patch-artifact != ''
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.patch-artifact }}
           path: ${{ runner.temp }}/proposal
@@ -39,7 +39,7 @@ jobs:
         if: inputs.patch-artifact != ''
         run: git apply --index "$RUNNER_TEMP/proposal/proposal.patch"
       - &setup-node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -100,7 +100,7 @@ jobs:
         env:
           CI: 'true'
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ github.run_attempt }}${{ inputs.patch-artifact != '' && '-proposal' || '' }}
           path: |
