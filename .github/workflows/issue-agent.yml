@@ -17,6 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: staging
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -27,7 +28,7 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           sandbox: workspace-write
           prompt: |
-            Implement this PeopleFlow issue in the checkout. Read AGENTS.md.
+            Implement this PeopleFlow issue in the staging checkout. Read AGENTS.md.
             Deliver all affected UI, API, database migrations and focused tests.
             For schema changes add a new migration. Run npm run check and npm run test:demo.
             Diagnose failures and retry your fixes. Preserve existing regression assertions.
@@ -36,12 +37,12 @@ jobs:
             Description: ${{ github.event.issue.body }}
       - name: Export changes against the original checkout
         env:
-          BASE: ${{ github.sha }}
         run: |
           git add -A
-          git diff --cached --binary "$BASE" > "$RUNNER_TEMP/issue.patch"
+          base=$(git rev-parse HEAD)
+          git diff --cached --binary "$base" > "$RUNNER_TEMP/issue.patch"
           test -s "$RUNNER_TEMP/issue.patch"
-          git diff --cached --quiet "$BASE" -- .github AGENTS.md
+          git diff --cached --quiet "$base" -- .github AGENTS.md
       - uses: actions/upload-artifact@v4
         with:
           name: issue-patch
@@ -56,6 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: staging
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -82,10 +84,12 @@ jobs:
       pull-requests: write
     env:
       ISSUE: ${{ github.event.issue.number }}
-      BASE: ${{ github.event.repository.default_branch }}
+      BASE: staging
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: staging
       - uses: actions/download-artifact@v4
         with:
           name: issue-patch
@@ -93,9 +97,8 @@ jobs:
       - name: Publish the tested change and merge
         run: |
           git fetch origin "$BASE"
-          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
           branch="agent/issue-$ISSUE-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          git switch -c "$branch"
+          git switch -c "$branch" "origin/$BASE"
           git apply --index "$RUNNER_TEMP/proposal/issue.patch"
           git diff --cached --quiet -- .github AGENTS.md
           git -c user.name='PeopleFlow Agent' -c user.email='github-actions[bot]@users.noreply.github.com' commit -m "Implement #$ISSUE"
