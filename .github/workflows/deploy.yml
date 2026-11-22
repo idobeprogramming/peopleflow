@@ -85,7 +85,7 @@ jobs:
         id: smoke
         if: env.HAS_HOOK == 'true' && env.APP_URL != ''
         env:
-          AUTH: ${{ secrets.BASIC_AUTH }}
+          SMOKE_LOGIN: ${{ secrets.SMOKE_LOGIN }}
         run: node scripts/smoke-test.mjs "$APP_URL" "$GITHUB_SHA" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Retour à la version précédente

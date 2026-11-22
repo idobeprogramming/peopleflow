@@ -79,9 +79,10 @@ Recommandé : un service web **Render** à partir d'une image (`ghcr.io/idobepro
 et un projet **Supabase** par environnement. N'importe quel hébergeur avec un
 « deploy hook » qui accepte `imgURL` fonctionne aussi.
 
-Variables d'environnement du service (sur l'hébergeur) :
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD`.
-L'image refuse de démarrer sans auth Basic : l'application n'a pas encore de connexion.
+Variables d'environnement du service (sur l'hébergeur) : `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, `DEMO_ACCOUNT=true` pour afficher le compte de démo sur la page
+de connexion, et `TRUST_PROXY=true` derrière le proxy de l'hébergeur (adresse IP réelle pour
+la limite de tentatives). En production l'image active les cookies `Secure` et `__Host-`.
 
 Dans GitHub, **par environnement** (`staging`, puis `production`) :
 
@@ -91,7 +92,7 @@ Dans GitHub, **par environnement** (`staging`, puis `production`) :
 | `SUPABASE_PROJECT_REF` | variable | Référence du projet Supabase |
 | `SUPABASE_DB_PASSWORD` | secret | Mot de passe de la base |
 | `DEPLOY_HOOK` | secret | URL du deploy hook de l'hébergeur |
-| `BASIC_AUTH` | secret | `utilisateur:motdepasse`, pour les smoke tests |
+| `SMOKE_LOGIN` | secret | `courriel:motdepasse` d'un compte de test, pour que les smoke tests se connectent |
 
 Au niveau du dépôt : secret `SUPABASE_ACCESS_TOKEN` (jeton personnel Supabase) et variable
 `STAGING_URL` (utilisée dans les commentaires et le rapport quotidien).

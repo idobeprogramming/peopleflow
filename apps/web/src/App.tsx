@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
-import type { Activity, Department, Employee, OnboardingTask } from '../../../packages/domain/src/types.js'
-import { listActivity, listDepartments, listEmployees, listOnboardingTasks } from './api.js'
+import { LogOut, RefreshCw } from 'lucide-react'
+import type { Activity, AuthUser, Department, Employee, OnboardingTask, UserRole } from '../../../packages/domain/src/types.js'
+import {
+  UNAUTHORIZED_EVENT, getCurrentUser, listActivity, listDepartments, listEmployees, listOnboardingTasks, logout,
+} from './api.js'
 import { CreateEmployeeDialog } from './components/CreateEmployeeDialog.js'
 import { Dashboard } from './components/Dashboard.js'
 import { EmployeeDirectory } from './components/EmployeeDirectory.js'
 import { EmployeeDrawer } from './components/EmployeeDrawer.js'
+import { LoginPage } from './components/LoginPage.js'
 import { Onboarding } from './components/Onboarding.js'
 import { Sidebar, type Page } from './components/Sidebar.js'
 
@@ -35,7 +38,35 @@ function Reports({ employees, departments }: { employees: Employee[]; department
   )
 }
 
+const roleLabels: Record<UserRole, string> = {
+  admin: 'Administration',
+  hr: 'Ressources humaines',
+  manager: 'Gestion',
+}
+
+/** Session gate: nothing is loaded from the API before a valid session exists. */
 export function App() {
+  const [user, setUser] = useState<AuthUser | null | undefined>(undefined)
+
+  useEffect(() => {
+    getCurrentUser().then(setUser).catch(() => setUser(null))
+    const signedOut = () => setUser(null)
+    window.addEventListener(UNAUTHORIZED_EVENT, signedOut)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, signedOut)
+  }, [])
+
+  if (user === undefined) {
+    return <div className="loading-state" role="status"><span className="loading-spinner" />Vérification de la session…</div>
+  }
+  if (!user) return <LoginPage onSignedIn={setUser} />
+  return <Workspace user={user} onSignOut={() => void logout().finally(() => setUser(null))} />
+}
+
+function initials(name: string) {
+  return name.split(/\s+/).map((part) => part[0] ?? '').join('').slice(0, 2).toUpperCase()
+}
+
+function Workspace({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
   const [page, setPage] = useState<Page>('overview')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -90,11 +121,13 @@ export function App() {
           <div className="topbar-context"><span className="topbar-workspace">Équipe principale</span></div>
           <div className="topbar-actions">
             <span className="topbar-divider" />
-            <div className="topbar-user" aria-label="Profil de Camille Fortin">
-              <span className="avatar avatar-small avatar-coral">CF</span>
-              <span className="topbar-user-copy"><strong>Camille Fortin</strong><small>Administratrice</small></span>
-              
+            <div className="topbar-user" aria-label={`Profil de ${user.displayName}`}>
+              <span className="avatar avatar-small avatar-coral">{initials(user.displayName)}</span>
+              <span className="topbar-user-copy"><strong>{user.displayName}</strong><small>{roleLabels[user.role]}</small></span>
             </div>
+            <button className="topbar-logout" type="button" aria-label="Se déconnecter" title="Se déconnecter" onClick={onSignOut}>
+              <LogOut size={17} aria-hidden="true" />
+            </button>
           </div>
         </header>
 

@@ -54,3 +54,13 @@ export interface Activity {
   description: string
   createdAt: string
 }
+
+export type UserRole = 'admin' | 'hr' | 'manager'
+
+/** The signed-in user as the API exposes it: never includes credentials. */
+export interface AuthUser {
+  id: string
+  email: string
+  displayName: string
+  role: UserRole
+}
