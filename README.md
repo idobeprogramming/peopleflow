@@ -55,7 +55,7 @@ quand un collaborateur pose le label `agent:ready` :
 ```text
 agent:ready → triage (plan ou questions) → implémentation Claude → garde-fous
 → vérification sur un runner neuf (tests, Supabase, E2E, secrets) → PR + rapport
-→ revue IA → approbation humaine → auto-merge → déploiement staging → smoke tests
+→ revue IA → ta fusion (jamais automatique) → déploiement staging → smoke tests
 ```
 
 Une issue dont le titre commence par `[démo]` cible plutôt la branche
