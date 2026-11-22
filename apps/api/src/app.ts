@@ -23,7 +23,10 @@ export function createApp(
     location: z.string().trim().min(1).max(100),
   })
 
-  app.get('/api/health', (context) => context.json({ status: 'ok' }))
+  app.get('/api/health', (context) => {
+    const version = process.env.APP_VERSION
+    return context.json(version ? { status: 'ok', version } : { status: 'ok' })
+  })
 
   app.get('/api/departments', async (context) => {
     return context.json(await repository.listDepartments())
