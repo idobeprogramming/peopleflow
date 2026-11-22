@@ -79,4 +79,4 @@ Pour la vid�o, ouvrir une issue d�crivant que les filtres � Ventes � et
 � En accueil � affichent trois personnes au lieu de Nicolas Gagnon. Le workflow
 de l'agent doit cr�er une branche depuis `staging`, reproduire le test,
 corriger le filtre, faire passer la CI et ouvrir la pull request.
-
+Pour la vidéo, ouvrir une issue dont le titre commence par `[démo]`. Le workflow prépare la correction et sa PR sur `demo/broken-directory-filters`. Les autres issues ciblent `staging`.
