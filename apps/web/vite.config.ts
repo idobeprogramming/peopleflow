@@ -6,7 +6,8 @@ export default defineConfig({
   server: {
     port: Number(process.env.WEB_PORT ?? 5173),
     proxy: {
-      '/api': `http://localhost:${process.env.PORT ?? 3000}`,
+      // Keep the browser's Host header: the API checks it against Origin to block cross-site writes.
+      '/api': { target: `http://localhost:${process.env.PORT ?? 3000}`, changeOrigin: false },
     },
   },
 })
