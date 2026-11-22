@@ -1,15 +1,39 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { filterEmployees } from '../../../packages/domain/src/directory.js'
+import { createMemoryAuthRepository } from './auth/memory-repository.js'
+import { authRoutes, requireSession, sameOriginWrites, type AuthVariables } from './auth/routes.js'
+import { createAuthService, type AuthService } from './auth/service.js'
 import {
   createMemoryEmployeeRepository,
   type EmployeeRepository,
 } from './employees/memory-repository.js'
 
+export interface AppOptions {
+  auth?: AuthService
+  /** Secure, __Host- prefixed cookie. Defaults to true in production. */
+  secureCookies?: boolean
+  /** Show the public demo credentials on the login page. */
+  demoAccount?: boolean
+  /** Read the client IP from X-Forwarded-For (only behind a trusted proxy). */
+  trustProxy?: boolean
+}
+
 export function createApp(
   repository: EmployeeRepository = createMemoryEmployeeRepository(),
+  options: AppOptions = {},
 ) {
-  const app = new Hono()
+  const app = new Hono<{ Variables: AuthVariables }>()
+  const auth = {
+    service: options.auth ?? createAuthService({ repository: createMemoryAuthRepository() }),
+    secureCookies: options.secureCookies ?? process.env.NODE_ENV === 'production',
+    demoAccount: options.demoAccount ?? false,
+    trustProxy: options.trustProxy ?? false,
+  }
+
+  app.use('/api/*', sameOriginWrites)
+  app.use('/api/*', requireSession(auth))
+  app.route('/api/auth', authRoutes(auth))
   const employeeInputSchema = z.object({
     firstName: z.string().trim().min(1).max(60),
     lastName: z.string().trim().min(1).max(60),
