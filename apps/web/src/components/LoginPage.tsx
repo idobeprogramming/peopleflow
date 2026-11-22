@@ -40,6 +40,7 @@ export function LoginPage({ onSignedIn }: LoginPageProps) {
           <div>
             <h1 id="login-title">Connexion à PeopleFlow</h1>
             <p>Accédez à votre espace RH.</p>
+            <p>bonjour demo</p>
           </div>
         </div>
 

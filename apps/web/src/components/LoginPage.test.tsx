@@ -35,6 +35,12 @@ describe('LoginPage', () => {
     expect(onSignedIn).toHaveBeenCalledWith(user)
   })
 
+  it('shows the greeting text', () => {
+    vi.mocked(api.getAuthOptions).mockResolvedValue({ demoAccount: null })
+    render(<LoginPage onSignedIn={vi.fn()} />)
+    expect(screen.getByText('bonjour demo')).toBeInTheDocument()
+  })
+
   it('uses the browser password manager fields', () => {
     vi.mocked(api.getAuthOptions).mockResolvedValue({ demoAccount: null })
     render(<LoginPage onSignedIn={vi.fn()} />)
