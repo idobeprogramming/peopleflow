@@ -45,7 +45,9 @@ Le script `scripts/setup-github.ps1` active les règles suivantes :
 - une approbation obligatoire;
 - revue du propriétaire pour les fichiers sensibles;
 - CI obligatoire;
-- branche à jour avant fusion;
+- branche à jour avant fusion, sur `staging` seulement : chaque promotion ajoute à `main`
+  un commit de fusion que `staging` (linéaire) ne peut pas contenir, et la CI de la PR teste
+  déjà `staging` fusionnée dans `main`;
 - historique linéaire sur `staging` (squash); commit de fusion pour la PR de promotion vers `main`;
 - conversations résolues;
 - force push et suppression interdits;
@@ -67,6 +69,20 @@ Les PR de fonctionnalités vers `staging` sont fusionnées en squash. La PR
 `staging → main`, ouverte par `promote.yml`, utilise un commit de fusion : `main`
 contient alors toujours `staging`, et la comparaison suivante ne montre que les
 nouveaux changements.
+
+## Correctif urgent
+
+Même chemin, en plus court : branche `fix/...` depuis `staging`, PR vers `staging`
+(CI complète), puis la PR de promotion vers `main` s'ouvre toute seule. Personne ne
+pousse directement sur `main`, même l'administrateur : la protection s'applique aux
+admins. Un retour arrière se fait par une PR qui annule le commit (`git revert`), jamais
+par un force push.
+
+## Déploiement
+
+Le pipeline est dans `ci.yml` : checks, puis déploiement de `staging` à chaque fusion et
+de `main` après approbation de l'environnement `production`. Il est désactivé tant que la
+variable `DEPLOY_ENABLED` ne vaut pas `true`.
 
 ## Migrations de base
 

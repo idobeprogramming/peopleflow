@@ -1,6 +1,6 @@
 # Démo PeopleFlow
 
-## Incident préparé dans main
+## Incident préparé sur `demo/broken-directory-filters`
 
 Dans Employés, sélectionner Ventes et En accueil, avec une recherche vide.
 Le seed contient une seule recrue des ventes, Nicolas Gagnon. Jade Mercier
@@ -10,7 +10,8 @@ toutes les deux en trop.
 Le défaut se trouve dans `filterEmployees`, dans `packages/domain/src/directory.ts`.
 Quand les deux filtres sont renseignés, une correspondance sur un seul des
 deux champs suffit. L’annuaire React et la route Hono partagent cette fonction.
-Le commit de référence avant l’incident est `31fdf6c`.
+`main` et `staging` contiennent la correction; seule la branche de démo garde le bug.
+Une issue dont le titre commence par `[démo]` y envoie l’agent.
 
 ## Tâche à donner à l’agent
 

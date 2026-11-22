@@ -1,3 +1,6 @@
+# The whole pipeline: checks on every PR and push, then deployment on pushes to
+# staging and main. Deployment is off until the DEPLOY_ENABLED variable is "true"
+# (docs/AUTOMATION_SETUP.md), so nothing is published before hosting exists.
 name: CI
 
 on:
@@ -11,9 +14,69 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded PR runs are cancelled; a deployment in progress never is.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   checks:
     name: CI
     uses: ./.github/workflows/checks.yml
+
+  deploy-staging:
+    needs: checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging' && vars.DEPLOY_ENABLED == 'true'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+      issues: write
+
+  notify-staging:
+    name: Prévenir les issues livrées
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      APP_URL: ${{ vars.STAGING_URL }}
+    steps:
+      - name: Commenter les issues fermées par ce commit
+        run: |
+          pr=$(gh api "repos/$REPO/commits/$GITHUB_SHA/pulls" --jq '.[0].number // empty')
+          [ -n "$pr" ] || exit 0
+          for issue in $(gh pr view "$pr" --repo "$REPO" --json closingIssuesReferences --jq '.closingIssuesReferences[].number'); do
+            gh issue comment "$issue" --repo "$REPO" --body "🚀 Déployé en staging (${GITHUB_SHA:0:7})${APP_URL:+ — à essayer : $APP_URL}."
+          done
+
+  # The production environment requires the owner's approval before this job starts.
+  deploy-production:
+    needs: checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+      issues: write
+
+  release:
+    name: Tag et notes de version
+    needs: deploy-production
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - run: |
+          tag="v$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes --title "PeopleFlow $tag"
+          echo "Release $tag" >> "$GITHUB_STEP_SUMMARY"
