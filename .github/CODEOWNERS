@@ -1,5 +1,4 @@
-# Les changements de production, migrations et workflows demandent la revue du propri�taire.
+# Les changements de production, migrations et workflows demandent la revue du propriétaire.
 * @idobeprogramming
 supabase/migrations/ @idobeprogramming
 .github/ @idobeprogramming
-
