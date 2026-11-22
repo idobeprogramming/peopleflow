@@ -30,3 +30,25 @@ il faut ajouter l’authentification avant de l’exposer à Internet.
 
 Suivre le fichier [`AGENTS.md`](./AGENTS.md) : une petite fonctionnalité, un
 test écrit d’abord, les vérifications pertinentes, puis un commit isolé.
+
+## Livraison depuis une issue
+
+Le workflow `.github/workflows/issue-agent.yml` traite les issues ouvertes ou
+rouvertes par un membre du projet. Codex prépare le changement. Un autre runner
+vérifie le patch, les tests, le typage, la compilation et les migrations sur une
+instance Supabase jetable. Après validation, le workflow ouvre une PR et tente
+une fusion squash. Un échec est signalé sur l’issue avec le journal GitHub Actions.
+
+Pour activer ce workflow sur le dépôt GitHub, publier cette branche comme branche
+par défaut, activer Actions et la création de PR par GitHub Actions, autoriser les
+fusions squash et configurer le secret Actions `OPENAI_API_KEY`. Les règles de
+protection de branche doivent permettre cette fusion. La première issue de la
+démo peut porter sur les filtres Ventes et En accueil.
+
+Pour tenir également le PC de démo à jour, démarrer Docker Desktop et ouvrir
+PowerShell dans un clone dédié de la branche main avec accès en lecture à origin.
+Lancer `.\scripts\serve-main.ps1` une fois et laisser ce terminal ouvert.
+Toutes les 30 secondes le script récupère main. À chaque nouvelle version, il
+relance PeopleFlow et applique les migrations locales. Une modification locale
+ou une divergence suspend la synchronisation. Les journaux de l’application
+sont dans `peopleflow-local.log` et `peopleflow-local-error.log`.

@@ -6,3 +6,6 @@ coverage/
 !.env.example
 .supabase/
 *.log
+supabase/.branches/
+supabase/.temp/
+apps/web/node_modules/.tmp/
