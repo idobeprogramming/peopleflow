@@ -19,12 +19,28 @@ npm run dev:local
 ```
 
 L’interface sera disponible sur `http://localhost:5173` et l’API sur
-`http://localhost:3000`. La commande applique les migrations en attente, vérifie les quatre tables
+`http://localhost:3000`. La commande applique les migrations en attente, vérifie les tables
 et transmet la clé locale au processus serveur. Pour une démo en mémoire,
-utilisez `npm run dev` avec les variables Supabase absentes.
+utilisez `npm run dev` avec les variables Supabase absentes (et `DEMO_ACCOUNT=true` dans
+`.env` pour afficher le compte de démo).
 
-La clé de service reste uniquement dans l’API. Ce projet est une démo locale;
-il faut ajouter l’authentification avant de l’exposer à Internet.
+## Connexion
+
+Toute l’API exige une session, sauf `/api/health`. Compte de démonstration (fictif) :
+`camille.fortin@example.test` / `PeopleFlow-Demo-2026!`. La page de connexion l’affiche
+seulement si le serveur a `DEMO_ACCOUNT=true`.
+
+- Mots de passe hachés avec scrypt (N=2^17, r=8, p=1, sel unique), comparés en temps constant
+  et re-hachés automatiquement si les paramètres augmentent.
+- Session : jeton aléatoire de 256 bits dans un cookie `HttpOnly`, `SameSite=Strict`,
+  `Secure` et préfixé `__Host-` en production. Seul son SHA-256 est stocké; expiration 8 h;
+  révoquée à la déconnexion.
+- Message d’erreur unique et temps de réponse identique pour un compte inexistant;
+  5 échecs par compte ou par client bloquent 15 minutes (429 + `Retry-After`).
+- Écritures refusées si l’`Origin` ne correspond pas à l’hôte (CSRF); en-têtes de sécurité
+  et CSP stricte sur toutes les réponses.
+
+La clé de service reste uniquement dans l’API.
 
 ## Contribution
 

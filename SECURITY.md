@@ -15,6 +15,14 @@ Réponse visée : 7 jours.
 | Fusionner dans `staging` ou `main` | PR, 4 checks verts, approbation du propriétaire (CODEOWNERS) |
 | Déployer en production | approbation de l'environnement `production` |
 
+## Authentification de l'application
+
+Mots de passe en scrypt (paramètres OWASP), sessions opaques côté serveur dont seul le SHA-256
+est stocké, cookie `__Host-` `HttpOnly` `Secure` `SameSite=Strict`, limite de tentatives,
+contrôle d'`Origin` et CSP. Détails dans le README. Le compte de démonstration est public par
+conception : `DEMO_ACCOUNT` doit rester désactivé, et ce compte supprimé, dans un déploiement
+avec de vraies données.
+
 ## Ce que l'agent peut et ne peut pas faire
 
 - Le texte d'une issue est passé à Claude comme fichier de données, jamais interpolé
