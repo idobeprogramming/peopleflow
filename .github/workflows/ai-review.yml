@@ -14,7 +14,10 @@ concurrency:
 jobs:
   review:
     name: Revue IA
-    if: startsWith(github.head_ref, 'agent/') && vars.AI_REVIEW != 'off'
+    if: >-
+      startsWith(github.head_ref, 'agent/')
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && vars.AI_REVIEW != 'off'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -33,7 +36,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - if: env.HAS_KEY == 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1
         with:
           # Either a Console API key or a subscription token from `claude setup-token` (Pro/Max).
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

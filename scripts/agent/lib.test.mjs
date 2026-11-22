@@ -71,6 +71,16 @@ test('déplacer une assertion sans la changer reste permis', () => {
   assert.deepEqual(checkDiff(parseUnifiedDiff(patch)).human, [])
 })
 
+test('ajouter une dépendance demande une décision humaine', () => {
+  const patch = fixAndTest + '\n' + diff('apps/web/package.json', { added: ['    "left-pad": "^1.3.0",'] })
+  assert.deepEqual(checkDiff(parseUnifiedDiff(patch)).human.map((item) => item.rule), ['dependency-change'])
+})
+
+test('changer un script npm sans toucher aux dépendances reste permis', () => {
+  const patch = fixAndTest + '\n' + diff('package.json', { added: ['    "test:watch": "vitest --watch",'] })
+  assert.deepEqual(checkDiff(parseUnifiedDiff(patch)).human, [])
+})
+
 test('changer le seed sans label migration demande une décision', () => {
   const patch = fixAndTest + '\n' + diff('supabase/seed.sql', { added: ["update employees set status = 'active';"] })
   assert.deepEqual(checkDiff(parseUnifiedDiff(patch)).human.map((item) => item.rule), ['data-change'])
@@ -100,7 +110,7 @@ test('un secret ajouté rejette le patch', () => {
 test('un gros diff demande un découpage, le lockfile ne compte pas', () => {
   const big = Array.from({ length: 401 }, (_, index) => `line ${index}`)
   const patch = fixAndTest + '\n' + diff('package-lock.json', { added: big })
-  assert.deepEqual(checkDiff(parseUnifiedDiff(patch)).human, [])
+  assert.deepEqual(checkDiff(parseUnifiedDiff(patch)).human.map((item) => item.rule), ['dependency-change'])
   const code = fixAndTest + '\n' + diff('apps/web/src/App.tsx', { added: big })
   assert.equal(checkDiff(parseUnifiedDiff(code)).human[0].rule, 'too-large')
 })
