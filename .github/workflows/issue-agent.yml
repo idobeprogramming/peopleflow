@@ -76,6 +76,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      issues: read
       id-token: write
     outputs:
       action: ${{ steps.decide.outputs.action }}
@@ -86,6 +87,26 @@ jobs:
         with:
           ref: ${{ needs.preflight.outputs.base_sha }}
           persist-credentials: false
+      # The agent reads answers to its questions: comments by the issue author, collaborators
+      # with write access and the pipeline's bots. Anyone else's comments are left out.
+      - name: Lire la discussion de l'issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+        run: |
+          mkdir -p .agent
+          gh api --paginate "repos/$REPO/issues/$ISSUE/comments" \
+            --jq '.[] | {user: {login: .user.login}, created_at, body}' | jq -s . > .agent/comments.json
+          trusted=()
+          for login in $(jq -r '.[].user.login' .agent/comments.json | sort -u); do
+            [ "$login" = "$AUTHOR" ] && continue
+            case "$login" in *'[bot]') continue ;; esac
+            permission=$(gh api "repos/$REPO/collaborators/$login/permission" --jq .permission 2>/dev/null || echo none)
+            case "$permission" in admin|maintain|write) trusted+=("$login") ;; esac
+          done
+          jq -n '$ARGS.positional' --args "${trusted[@]}" > .agent/trusted.json
       - name: Écrire l'issue comme fichier de données
         id: issue
         run: node scripts/agent/cli.mjs write-issue .agent
