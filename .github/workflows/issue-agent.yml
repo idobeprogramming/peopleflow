@@ -32,7 +32,7 @@ jobs:
       REPO: ${{ github.repository }}
       ISSUE: ${{ github.event.issue.number }}
       SENDER: ${{ github.event.sender.login }}
-      HAS_ANTHROPIC: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+      HAS_CLAUDE: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
       HAS_APP: ${{ vars.AGENT_APP_ID != '' && secrets.AGENT_APP_PRIVATE_KEY != '' }}
     steps:
       - name: Vérifier que le label vient d'un collaborateur
@@ -45,7 +45,7 @@ jobs:
       - name: Vérifier la configuration
         run: |
           missing=()
-          [ "$HAS_ANTHROPIC" = true ] || missing+=("le secret ANTHROPIC_API_KEY")
+          [ "$HAS_CLAUDE" = true ] || missing+=("le secret CLAUDE_CODE_OAUTH_TOKEN (abonnement) ou ANTHROPIC_API_KEY (API)")
           [ "$HAS_APP" = true ] || missing+=("la variable AGENT_APP_ID et le secret AGENT_APP_PRIVATE_KEY (GitHub App)")
           if [ ${#missing[@]} -gt 0 ]; then
             body="### ⚙️ Agent non configuré"$'\n\n'"Il manque : $(IFS=';'; echo "${missing[*]}")."$'\n\n'"Voir docs/AUTOMATION_SETUP.md."
@@ -76,6 +76,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      id-token: write
     outputs:
       action: ${{ steps.decide.outputs.action }}
       comment: ${{ steps.decide.outputs.comment }}
@@ -91,7 +92,9 @@ jobs:
       - name: Triage par Claude
         uses: anthropics/claude-code-action@v1
         with:
+          # Either a Console API key or a subscription token from `claude setup-token` (Pro/Max).
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           prompt: Lis scripts/agent/triage.prompt.md et suis exactement ses consignes.
           claude_args: >-
@@ -140,6 +143,7 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -157,7 +161,9 @@ jobs:
       - name: Implémentation par Claude
         uses: anthropics/claude-code-action@v1
         with:
+          # Either a Console API key or a subscription token from `claude setup-token` (Pro/Max).
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           prompt: Lis scripts/agent/implement.prompt.md et suis exactement ses consignes.
           claude_args: >-

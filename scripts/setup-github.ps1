@@ -148,6 +148,7 @@ Write-Host @"
 Fait. Il reste ce que ce script ne peut pas faire pour toi (voir docs/AUTOMATION_SETUP.md) :
   1. Créer la GitHub App « PeopleFlow Agent », l'installer sur $Repository,
      puis : variable AGENT_APP_ID + secret AGENT_APP_PRIVATE_KEY.
-  2. Secret ANTHROPIC_API_KEY (Claude : triage, implémentation, correction et revue).
+  2. Secret CLAUDE_CODE_OAUTH_TOKEN (abonnement Pro/Max : claude setup-token)
+     ou ANTHROPIC_API_KEY (clé API).
   3. Pour déployer : secrets et variables des environnements staging et production.
 "@ -ForegroundColor Green
