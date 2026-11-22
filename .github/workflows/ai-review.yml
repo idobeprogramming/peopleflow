@@ -23,10 +23,10 @@ jobs:
       pull-requests: write
       id-token: write
     env:
-      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
     steps:
       - if: env.HAS_KEY != 'true'
-        run: echo "::notice::ANTHROPIC_API_KEY absent; revue IA ignorée."
+        run: echo "::notice::Ni CLAUDE_CODE_OAUTH_TOKEN ni ANTHROPIC_API_KEY; revue IA ignorée."
       - if: env.HAS_KEY == 'true'
         uses: actions/checkout@v5
         with:
@@ -35,7 +35,9 @@ jobs:
       - if: env.HAS_KEY == 'true'
         uses: anthropics/claude-code-action@v1
         with:
+          # Either a Console API key or a subscription token from `claude setup-token` (Pro/Max).
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           prompt: |
             Dépôt ${{ github.repository }}, pull request #${{ github.event.pull_request.number }}.
