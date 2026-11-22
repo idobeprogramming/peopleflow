@@ -1,8 +1,8 @@
 param(
   [string]$Repository = 'idobeprogramming/peopleflow',
   [string[]]$RequiredChecks = @(
-    'CI / Tests, typage et build',
-    'CI / Migrations Supabase'
+    'Tests, typage et build',
+    'Migrations Supabase'
   )
 )
 
