@@ -9,7 +9,7 @@ export function filterEmployees(employees: Employee[], query: string, department
     const matchesDepartment = !departmentId || employee.departmentId === departmentId
     const matchesStatus = !status || employee.status === status
     const matchesFilters = departmentId && status
-      ? matchesDepartment && matchesStatus
+      ? matchesDepartment || matchesStatus
       : matchesDepartment && matchesStatus
     return matchesText && matchesFilters
   })
