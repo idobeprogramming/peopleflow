@@ -9,3 +9,6 @@ coverage/
 supabase/.branches/
 supabase/.temp/
 apps/web/node_modules/.tmp/
+.agent/
+playwright-report/
+test-results/
