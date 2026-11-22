@@ -210,6 +210,9 @@ jobs:
     name: Vérification indépendante
     needs: [preflight, guard]
     if: needs.guard.outputs.verdict == 'ok'
+    # A called workflow can only use permissions its caller grants; the workflow default is none.
+    permissions:
+      contents: read
     uses: ./.github/workflows/checks.yml
     with:
       ref: ${{ needs.preflight.outputs.base_sha }}

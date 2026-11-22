@@ -20,13 +20,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      HAS_APP: ${{ vars.AGENT_APP_ID != '' && secrets.AGENT_APP_PRIVATE_KEY != '' }}
     steps:
+      - if: env.HAS_APP != 'true'
+        run: echo "::notice::GitHub App de l'agent non configurée (docs/AUTOMATION_SETUP.md); promotion ignorée."
       - id: app
+        if: env.HAS_APP == 'true'
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.AGENT_APP_ID }}
           private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
       - name: Ouvrir ou mettre à jour la PR
+        if: env.HAS_APP == 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
