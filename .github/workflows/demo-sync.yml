@@ -1,0 +1,55 @@
+# Keeps demo/broken-directory-filters equal to main plus the deliberate directory-filter bug.
+# A conflict, or a bug that no longer reproduces, fails the run and the pipeline alert opens an issue.
+name: Synchronisation de la démo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: demo-sync
+  cancel-in-progress: false
+
+env:
+  DEMO_BRANCH: demo/broken-directory-filters
+
+jobs:
+  sync:
+    name: Fusionner main dans la branche de démo
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.DEMO_BRANCH }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Fusionner main
+        run: |
+          git fetch origin main
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo "La branche de démo contient déjà main."
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            merge --no-edit -m "Merge main into $DEMO_BRANCH" origin/main || {
+              git merge --abort
+              echo "::error::Conflit entre main et $DEMO_BRANCH. Résoudre à la main en gardant le bug des filtres."
+              exit 1
+            }
+      - name: Le bug de démo doit toujours se reproduire
+        run: |
+          if npm run test:demo; then
+            echo "::error::Le test de démo passe : le bug des filtres a disparu de $DEMO_BRANCH."
+            exit 1
+          fi
+          echo "Le bug se reproduit toujours (échec attendu du test de démo)."
+      - name: Pousser
+        run: git push origin "HEAD:$DEMO_BRANCH"
