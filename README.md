@@ -1,7 +1,10 @@
 # PeopleFlow
 
+[![CI](https://github.com/idobeprogramming/peopleflow/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/idobeprogramming/peopleflow/actions/workflows/ci.yml)
+
 Application de démonstration de gestion d’employés avec React, Vite, Hono et
-Supabase/Postgres. L’interface est en français; le code est en anglais.
+Supabase/Postgres, livrée par un agent Claude qui transforme une issue en PR vérifiée.
+L’interface est en français; le code est en anglais.
 
 Le plan priorisé est dans [`FEATURE_PLAN.md`](./FEATURE_PLAN.md). Le processus
 de travail assisté par agents est décrit dans
@@ -52,11 +55,33 @@ test écrit d’abord, les vérifications pertinentes, puis un commit isolé.
 Une issue créée avec un modèle (Fonctionnalité ou Bogue) devient une PR vers `staging`
 quand un collaborateur pose le label `agent:ready` :
 
-```text
-agent:ready → triage (plan ou questions) → implémentation Claude → garde-fous
-→ vérification sur un runner neuf (tests, Supabase, E2E, secrets) → PR + rapport
-→ revue IA → approbation humaine → auto-merge → déploiement staging → smoke tests
+```mermaid
+flowchart TD
+  I["Issue avec critères d'acceptation"] -->|"label agent:ready (droit d'écriture)"| T{"Triage par Claude"}
+  T -->|"demande floue"| Q["Questions dans l'issue · needs-info"]
+  Q -->|"réponse en commentaire + agent:ready"| T
+  T -->|"plan"| C["Claude : test qui échoue, correctif, vérifications"]
+  C --> G{"Garde-fous"}
+  G -->|"seed, migration, dépendance, test affaibli, gros diff"| H["needs-human"]
+  G -->|"OK"| V["Runner neuf : tests, Supabase, E2E, secrets, image Docker"]
+  V --> P["PR + rapport, ouverte par l'App de l'agent"]
+  P --> R["Revue IA en commentaire"]
+  P --> CI{"CI"}
+  CI -->|"rouge"| F["Correction automatique, 2 essais"]
+  F --> CI
+  F -->|"toujours rouge"| H
+  CI -->|"verte"| M["Fusion dans staging (une personne)"]
+  M --> PR["PR de promotion ouverte par l'App"]
+  PR -->|"approbation"| PROD["main, puis production"]
+  X["Échec d'un workflow"] --> INC["Issue incident : journal + diagnostic de Claude"]
+  classDef human fill:#ffe9b8,stroke:#b7791f,stroke-width:2px,color:#3d2c00
+  class M,PROD,H,INC,Q human
 ```
+
+Les étapes en couleur demandent une personne. Rien ne fusionne ni ne part en production
+sans elle, et l’agent ne modifie jamais les règles qui l’encadrent (`.github/`,
+`AGENTS.md`, `scripts/agent/`). Le triage lit les réponses à ses questions dans les
+commentaires de l’auteur et des collaborateurs, jamais dans ceux des autres.
 
 Une issue dont le titre commence par `[démo]` cible plutôt la branche
 `demo/broken-directory-filters`, qui garde volontairement le bug des filtres pour la vidéo.

@@ -76,6 +76,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      issues: read
       id-token: write
     outputs:
       action: ${{ steps.decide.outputs.action }}
@@ -86,6 +87,26 @@ jobs:
         with:
           ref: ${{ needs.preflight.outputs.base_sha }}
           persist-credentials: false
+      # The agent reads answers to its questions: comments by the issue author, collaborators
+      # with write access and the pipeline's bots. Anyone else's comments are left out.
+      - name: Lire la discussion de l'issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+        run: |
+          mkdir -p .agent
+          gh api --paginate "repos/$REPO/issues/$ISSUE/comments" \
+            --jq '.[] | {user: {login: .user.login}, created_at, body}' | jq -s . > .agent/comments.json
+          trusted=()
+          for login in $(jq -r '.[].user.login' .agent/comments.json | sort -u); do
+            [ "$login" = "$AUTHOR" ] && continue
+            case "$login" in *'[bot]') continue ;; esac
+            permission=$(gh api "repos/$REPO/collaborators/$login/permission" --jq .permission 2>/dev/null || echo none)
+            case "$permission" in admin|maintain|write) trusted+=("$login") ;; esac
+          done
+          jq -n '$ARGS.positional' --args "${trusted[@]}" > .agent/trusted.json
       - name: Écrire l'issue comme fichier de données
         id: issue
         run: node scripts/agent/cli.mjs write-issue .agent
@@ -280,21 +301,15 @@ jobs:
           git push origin "$branch"
           url=$(gh pr create --base "$BASE_BRANCH" --head "$branch" --title "$TITLE" --body-file "$RUNNER_TEMP/proposal/report.md")
           echo "url=$url" >> "$GITHUB_OUTPUT"
+          # Never auto-merge an agent PR: a person merging it is the human review.
           gh pr edit "$url" --add-label agent:review
-          # Auto-merge only waits for approval when the base branch is protected; on an
-          # unprotected branch it would merge at once, so the PR is left for a person instead.
-          if [ "$(gh api "repos/$GITHUB_REPOSITORY/branches/$BASE_BRANCH" --jq .protected)" = true ]; then
-            gh pr merge "$url" --auto --squash || echo "::warning::Auto-merge indisponible; la PR attend une fusion manuelle."
-          else
-            echo "::warning::$BASE_BRANCH n'est pas protégée : pas d'auto-merge, la PR attend ta fusion."
-          fi
       - name: Prévenir sur l'issue
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           PR_URL: ${{ steps.pr.outputs.url }}
         run: |
           gh issue edit "$ISSUE" --remove-label agent:working --add-label agent:review
-          gh issue comment "$ISSUE" --body "✅ PR prête pour revue : $PR_URL"$'\n\n'"Elle fusionnera dans \`$BASE_BRANCH\` après approbation et CI verte."
+          gh issue comment "$ISSUE" --body "✅ PR prête pour revue : $PR_URL"$'\n\n'"Elle attend ta revue : rien ne fusionne dans \`$BASE_BRANCH\` sans ton clic."
 
   stopped:
     name: Arrêt par les garde-fous

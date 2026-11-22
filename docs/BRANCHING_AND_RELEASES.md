@@ -63,6 +63,20 @@ $env:GH_TOKEN = 'github_pat_...'
 Le jeton reste dans la session PowerShell et ne doit pas être ajouté au dépôt.
 Le script peut recevoir un autre dépôt avec `-Repository owner/repository`.
 
+## Approbations
+
+`staging` exige une PR et les 4 checks, sans approbation et sans exception pour les admins :
+seul sur le dépôt, le propriétaire ne peut pas approuver ses propres PR, et une règle qu'on
+contourne à chaque fois ne protège rien. Les PR de l'agent n'activent jamais l'auto-merge : le
+clic de fusion d'une personne est la revue. `main` exige en plus une approbation, possible
+puisque la PR de promotion est ouverte par l'App de l'agent.
+
+## Synchronisation de la démo
+
+`demo-sync.yml` fusionne `main` dans `demo/broken-directory-filters` à chaque push sur `main`,
+puis vérifie que le test de démo échoue toujours. Un conflit ou un bug disparu fait échouer le
+run, et le signalement automatique ouvre une issue.
+
 ## Fusions
 
 Les PR de fonctionnalités vers `staging` sont fusionnées en squash. La PR
