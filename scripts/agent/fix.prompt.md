@@ -15,4 +15,5 @@ Règles :
 4. Lance `npm run check` et `npm run test:demo`.
 5. Ne modifie jamais `.github/`, `AGENTS.md` ni `scripts/agent/`. Pas de commit, pas de push.
 
-Termine par le JSON demandé par le schéma, avec les vrais codes de sortie. Textes en français.
+Termine en écrivant `.agent/report.json`, conforme à `scripts/agent/report.schema.json`,
+avec les vrais codes de sortie. Textes en français.

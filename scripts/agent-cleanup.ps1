@@ -1,4 +1,4 @@
-# Removes local agent worktrees whose branch is merged into origin/staging, or whose pushed branch was
+﻿# Removes local agent worktrees whose branch is merged into origin/staging, or whose pushed branch was
 # deleted on origin after its PR was merged. Unpushed branches and worktrees with local changes are kept.
 param([string]$Base = 'staging', [switch]$WhatIf)
 $ErrorActionPreference = 'Stop'
