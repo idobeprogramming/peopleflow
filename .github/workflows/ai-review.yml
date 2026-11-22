@@ -1,0 +1,44 @@
+# Second-opinion review of agent pull requests by a different model. It comments; it never approves.
+name: Revue IA
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Revue IA
+    if: startsWith(github.head_ref, 'agent/') && vars.AI_REVIEW != 'off'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: write
+      id-token: write
+    env:
+      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+    steps:
+      - if: env.HAS_KEY != 'true'
+        run: echo "::notice::ANTHROPIC_API_KEY absent; revue IA ignorée."
+      - if: env.HAS_KEY == 'true'
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - if: env.HAS_KEY == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Dépôt ${{ github.repository }}, pull request #${{ github.event.pull_request.number }}.
+            Lis scripts/agent/review.prompt.md et suis exactement ses consignes.
+          claude_args: >-
+            --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*)"
