@@ -7,6 +7,9 @@ concurrency:
   group: peopleflow-issue-${{ github.event.issue.number }}
   cancel-in-progress: false
 
+env:
+  TARGET_BRANCH: ${{ startsWith(github.event.issue.title, '[démo]') && 'demo/broken-directory-filters' || 'staging' }}
+
 jobs:
   implement:
     if: github.event.issue.author_association == 'OWNER' || github.event.issue.author_association == 'MEMBER' || github.event.issue.author_association == 'COLLABORATOR'
@@ -17,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: staging
+          ref: ${{ env.TARGET_BRANCH }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -28,7 +31,7 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           sandbox: workspace-write
           prompt: |
-            Implement this PeopleFlow issue in the staging checkout. Read AGENTS.md.
+            Implement this PeopleFlow issue in the checked-out target branch. Read AGENTS.md.
             Deliver all affected UI, API, database migrations and focused tests.
             For schema changes add a new migration. Run npm run check and npm run test:demo.
             Diagnose failures and retry your fixes. Preserve existing regression assertions.
@@ -56,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: staging
+          ref: ${{ env.TARGET_BRANCH }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -83,26 +86,25 @@ jobs:
       pull-requests: write
     env:
       ISSUE: ${{ github.event.issue.number }}
-      BASE: staging
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: staging
+          ref: ${{ env.TARGET_BRANCH }}
       - uses: actions/download-artifact@v4
         with:
           name: issue-patch
           path: ${{ runner.temp }}/proposal
       - name: Publish the tested change and merge
         run: |
-          git fetch origin "$BASE"
+          git fetch origin "$TARGET_BRANCH"
           branch="agent/issue-$ISSUE-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          git switch -c "$branch" "origin/$BASE"
+          git switch -c "$branch" "origin/$TARGET_BRANCH"
           git apply --index "$RUNNER_TEMP/proposal/issue.patch"
           git diff --cached --quiet -- .github AGENTS.md
           git -c user.name='PeopleFlow Agent' -c user.email='github-actions[bot]@users.noreply.github.com' commit -m "Implement #$ISSUE"
           git push origin "$branch"
-          pr=$(gh pr create --base "$BASE" --head "$branch" --title "PeopleFlow #$ISSUE" --body "Closes #$ISSUE")
+          pr=$(gh pr create --base "$TARGET_BRANCH" --head "$branch" --title "PeopleFlow #$ISSUE" --body "Closes #$ISSUE")
           gh pr merge "$pr" --squash --match-head-commit "$(git rev-parse HEAD)" --delete-branch
 
   report:
