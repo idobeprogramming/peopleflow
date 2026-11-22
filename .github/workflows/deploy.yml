@@ -1,0 +1,112 @@
+# Shared deployment for staging and production. Secrets and variables are scoped to the GitHub
+# Environment, so both environments use the same names (see docs/AUTOMATION_SETUP.md).
+# Each external step is skipped with a notice until its configuration exists.
+name: Déploiement
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  deploy:
+    name: Déployer (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.APP_URL }}
+    permissions:
+      contents: read
+      packages: write
+      issues: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      IMAGE: ghcr.io/${{ github.repository }}
+      APP_URL: ${{ vars.APP_URL }}
+      HAS_SUPABASE: ${{ secrets.SUPABASE_ACCESS_TOKEN != '' && vars.SUPABASE_PROJECT_REF != '' && secrets.SUPABASE_DB_PASSWORD != '' }}
+      HAS_HOOK: ${{ secrets.DEPLOY_HOOK != '' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Appliquer les migrations Supabase
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          npx --no-install supabase link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          npx --no-install supabase db push --password "$SUPABASE_DB_PASSWORD"
+      - if: env.HAS_SUPABASE != 'true'
+        run: echo "::notice::Supabase $ENVIRONMENT non configuré; migrations ignorées."
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Construire et publier l'image
+        run: |
+          image="${IMAGE,,}"
+          # Keep the currently deployed image as the rollback target.
+          if docker pull "$image:$ENVIRONMENT" >/dev/null 2>&1; then
+            docker tag "$image:$ENVIRONMENT" "$image:$ENVIRONMENT-previous" && docker push "$image:$ENVIRONMENT-previous"
+          fi
+          docker build --build-arg APP_VERSION="$GITHUB_SHA" -t "$image:$GITHUB_SHA" -t "$image:$ENVIRONMENT" .
+          docker push "$image:$GITHUB_SHA"
+          docker push "$image:$ENVIRONMENT"
+          echo "IMAGE_REF=$image:$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "PREVIOUS_REF=$image:$ENVIRONMENT-previous" >> "$GITHUB_ENV"
+
+      - name: Déclencher le déploiement
+        if: env.HAS_HOOK == 'true'
+        env:
+          HOOK: ${{ secrets.DEPLOY_HOOK }}
+        run: |
+          encoded=$(node -p "encodeURIComponent(process.env.IMAGE_REF)")
+          separator=$([[ "$HOOK" == *\?* ]] && echo '&' || echo '?')
+          curl -fsS -X POST "${HOOK}${separator}imgURL=${encoded}" -o /dev/null
+      - if: env.HAS_HOOK != 'true'
+        run: echo "::notice::DEPLOY_HOOK absent pour $ENVIRONMENT; image publiée mais non déployée."
+
+      - name: Smoke tests
+        id: smoke
+        if: env.HAS_HOOK == 'true' && env.APP_URL != ''
+        env:
+          AUTH: ${{ secrets.BASIC_AUTH }}
+        run: node scripts/smoke-test.mjs "$APP_URL" "$GITHUB_SHA" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Retour à la version précédente
+        if: failure() && steps.smoke.conclusion == 'failure'
+        env:
+          HOOK: ${{ secrets.DEPLOY_HOOK }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          encoded=$(node -p "encodeURIComponent(process.env.PREVIOUS_REF)")
+          separator=$([[ "$HOOK" == *\?* ]] && echo '&' || echo '?')
+          curl -fsS -X POST "${HOOK}${separator}imgURL=${encoded}" -o /dev/null || echo "::error::Le retour arrière a aussi échoué."
+          gh issue create --repo "$GITHUB_REPOSITORY" --label incident \
+            --title "$ENVIRONMENT : smoke tests en échec sur ${GITHUB_SHA:0:7}" \
+            --body "Retour à l'image précédente demandé (\`$PREVIOUS_REF\`). Journal : $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+      - name: Résumé
+        if: always()
+        run: |
+          {
+            echo "### $ENVIRONMENT"
+            echo "- Commit : \`${GITHUB_SHA:0:7}\`"
+            echo "- Image : \`${IMAGE_REF:-non publiée}\`"
+            echo "- URL : ${APP_URL:-non configurée}"
+          } >> "$GITHUB_STEP_SUMMARY"
