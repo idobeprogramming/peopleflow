@@ -36,7 +36,6 @@ jobs:
             Issue: ${{ github.event.issue.title }}
             Description: ${{ github.event.issue.body }}
       - name: Export changes against the original checkout
-        env:
         run: |
           git add -A
           base=$(git rev-parse HEAD)
