@@ -1,9 +1,15 @@
 # Turns a failed pipeline run into an issue a person can act on: failed jobs and steps, the end
 # of the failing log, and a read-only diagnosis by Claude. One open issue per workflow; repeated
 # failures add a comment. CI failures on pull requests are ordinary feedback and are skipped.
+# It can also be started by hand with the id of any past run, to report or re-report it.
 name: Signalement des échecs
 
 on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Numéro du run à signaler (dans l'URL du run)
+        required: true
   workflow_run:
     workflows:
       - CI
@@ -18,15 +24,16 @@ on:
 permissions: {}
 
 concurrency:
-  group: pipeline-alert-${{ github.event.workflow_run.name }}
+  group: pipeline-alert-${{ github.event.workflow_run.name || inputs.run_id }}
   cancel-in-progress: false
 
 jobs:
   report:
     name: Ouvrir ou compléter l'issue
     if: >-
-      contains(fromJSON('["failure","startup_failure","timed_out"]'), github.event.workflow_run.conclusion)
-      && (github.event.workflow_run.name != 'CI' || github.event.workflow_run.event == 'push')
+      github.event_name == 'workflow_dispatch'
+      || (contains(fromJSON('["failure","startup_failure","timed_out"]'), github.event.workflow_run.conclusion)
+        && (github.event.workflow_run.name != 'CI' || github.event.workflow_run.event == 'push'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -37,13 +44,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
-      RUN_ID: ${{ github.event.workflow_run.id }}
-      RUN_URL: ${{ github.event.workflow_run.html_url }}
-      WORKFLOW: ${{ github.event.workflow_run.name }}
-      BRANCH: ${{ github.event.workflow_run.head_branch }}
-      SHA: ${{ github.event.workflow_run.head_sha }}
-      EVENT: ${{ github.event.workflow_run.event }}
-      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
       HAS_CLAUDE: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' || secrets.ANTHROPIC_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v7
@@ -52,6 +53,12 @@ jobs:
           sparse-checkout: |
             .github
             scripts
+      - name: Identifier le run
+        run: |
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::Numéro de run invalide : $RUN_ID"; exit 1; }
+          gh run view "$RUN_ID" --repo "$REPO" --json workflowName,url,headBranch,headSha,event,conclusion --jq '
+            "WORKFLOW=\(.workflowName)\nRUN_URL=\(.url)\nBRANCH=\(.headBranch)\nSHA=\(.headSha)\nEVENT=\(.event)\nCONCLUSION=\(.conclusion)"
+          ' >> "$GITHUB_ENV"
       - name: Lire le run en échec
         run: |
           mkdir -p .alert
@@ -60,11 +67,18 @@ jobs:
             | "- **\(.name)** (\(.conclusion)) : " + ([.steps[] | select(.conclusion == "failure") | .name] | join(", "))
           ' > .alert/jobs.md || true
           [ -s .alert/jobs.md ] || echo "- (le run n'a démarré aucun job : erreur de configuration du workflow)" > .alert/jobs.md
-          # Secrets are masked by GitHub in logs; ANSI colours and timestamps are stripped.
+          # Secrets are masked by GitHub in logs; colours, timestamps and image-pull noise are
+          # dropped. The excerpt ends at the first ##[error] line, before the post-job cleanup.
           gh run view "$RUN_ID" --repo "$REPO" --log-failed 2>/dev/null \
             | sed -E 's/\x1b\[[0-9;]*m//g; s/^[^\t]*\t[^\t]*\t[0-9TZ:.-]+ //' \
-            | grep -vE 'Pulling fs layer|Download complete|Pull complete|Already exists|Waiting$' \
-            | tail -n 60 > .alert/log.txt || true
+            | grep -vE '^[0-9a-f]{12}: |^Digest: sha256:|^Status: Downloaded|: Pulling from |^[a-z0-9.-]+\.[a-z]+/[^ ]+:[^ ]+$|^Waiting$' \
+            > .alert/full.txt || true
+          first_error=$(grep -n -m1 '##\[error\]' .alert/full.txt | cut -d: -f1)
+          if [ -n "$first_error" ]; then
+            head -n "$first_error" .alert/full.txt | tail -n 60 > .alert/log.txt
+          else
+            tail -n 60 .alert/full.txt > .alert/log.txt
+          fi
           {
             echo "Workflow : $WORKFLOW ($CONCLUSION)"
             echo "Événement : $EVENT sur $BRANCH ($SHA)"
