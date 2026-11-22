@@ -8,7 +8,8 @@
 > de fusion pour que `main` contienne toujours `staging`. Depuis le 22 novembre, Claude fait
 > le triage, l'implémentation, la correction et la revue (Codex n'est plus utilisé). Le bug de démo des filtres est
 > corrigé sur `main` et `staging`; il reste sur `demo/broken-directory-filters`, ciblée par
-> les issues dont le titre commence par `[démo]`.
+> les issues dont le titre commence par `[démo]`. Le déploiement est intégré à `ci.yml` et
+> désactivé tant que `DEPLOY_ENABLED` ne vaut pas `true`.
 
 But : qu'une issue bien écrite devienne une fonctionnalité testable en staging
 sans que j'aie à guider l'agent étape par étape, avec des points d'arrêt clairs

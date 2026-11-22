@@ -68,6 +68,20 @@ Les PR de fonctionnalités vers `staging` sont fusionnées en squash. La PR
 contient alors toujours `staging`, et la comparaison suivante ne montre que les
 nouveaux changements.
 
+## Correctif urgent
+
+Même chemin, en plus court : branche `fix/...` depuis `staging`, PR vers `staging`
+(CI complète), puis la PR de promotion vers `main` s'ouvre toute seule. Personne ne
+pousse directement sur `main`, même l'administrateur : la protection s'applique aux
+admins. Un retour arrière se fait par une PR qui annule le commit (`git revert`), jamais
+par un force push.
+
+## Déploiement
+
+Le pipeline est dans `ci.yml` : checks, puis déploiement de `staging` à chaque fusion et
+de `main` après approbation de l'environnement `production`. Il est désactivé tant que la
+variable `DEPLOY_ENABLED` ne vaut pas `true`.
+
 ## Migrations de base
 
 Une modification PostgreSQL ajoute un fichier dans
