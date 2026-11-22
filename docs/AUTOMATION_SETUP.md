@@ -87,9 +87,15 @@ Chaque étape absente est sautée avec un avis dans le journal. La CI ne casse p
 
 ## 6. Premier essai
 
-1. Ouvrir une issue avec le modèle **Bogue** : « Ventes + En accueil affiche 3 personnes ».
+1. Ouvrir une issue avec le modèle **Bogue**, titrée
+   « [démo] Ventes et En accueil affichent 3 personnes au lieu de Nicolas Gagnon ».
+   Le préfixe `[démo]` envoie l'agent sur `demo/broken-directory-filters`, où le bug existe
+   encore (il est corrigé sur `main` et `staging`).
 2. Poser le label `agent:ready`.
-3. Suivre : commentaire de prise en charge → plan → PR vers `staging` avec rapport →
-   revue IA → ton approbation → fusion → déploiement staging → commentaire « Déployé ».
+3. Suivre : commentaire de prise en charge → plan → PR vers la branche de démo avec rapport →
+   revue IA → ton approbation → fusion.
+
+Pour un essai sur `staging` (avec déploiement), prendre une issue sans `[démo]`, par exemple
+une ligne de `docs/demo-features.md` : « Recherche sans accents ».
 
 Si la configuration est incomplète, l'agent le dit dans l'issue et s'arrête.

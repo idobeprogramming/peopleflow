@@ -82,7 +82,7 @@ La branche `demo/broken-directory-filters` contient volontairement le bug
 dans `packages/domain/src/directory.ts`. Les branches `main` et `staging`
 contiennent la correction.
 
-Pour la vidéo, ouvrir une issue décrivant que les filtres « Ventes » et
-« En accueil » affichent trois personnes au lieu de Nicolas Gagnon. Le workflow
-de l'agent doit créer une branche depuis `staging`, reproduire le test,
-corriger le filtre, faire passer la CI et ouvrir la pull request.
+Pour la vidéo, ouvrir une issue dont le titre commence par `[démo]`, par exemple
+« [démo] Ventes et En accueil affichent trois personnes au lieu de Nicolas Gagnon ».
+Le workflow prépare la correction et sa PR sur `demo/broken-directory-filters`.
+Les autres issues ciblent `staging`.

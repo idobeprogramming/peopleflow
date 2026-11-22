@@ -42,6 +42,9 @@ agent:ready → triage (plan ou questions) → implémentation Codex → garde-f
 → revue IA → approbation humaine → auto-merge → déploiement staging → smoke tests
 ```
 
+Une issue dont le titre commence par `[démo]` cible plutôt la branche
+`demo/broken-directory-filters`, qui garde volontairement le bug des filtres pour la vidéo.
+
 Si la CI échoue sur une PR de l'agent, ou sur `/agent fix <consigne>` en commentaire,
 l'agent corrige sur la même branche, deux fois au maximum, puis passe la main avec
 le label `needs-human`. La promotion `staging → main` reste une PR approuvée.

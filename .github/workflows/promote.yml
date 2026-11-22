@@ -1,11 +1,16 @@
-# Opens (or refreshes) the staging -> main promotion PR with the list of changes.
+# Opens (or refreshes) the staging -> main promotion PR after each change on staging.
+# Uses the agent App token so the PR triggers CI (a GITHUB_TOKEN PR would not).
 # Merging it still requires the main branch protection: one approval and green CI.
 name: Promotion vers production
 
 on:
+  push:
+    branches: [staging]
   workflow_dispatch:
-  schedule:
-    - cron: '17 19 * * 5' # vendredi 14 h 17 (heure de l'Est)
+
+concurrency:
+  group: promote-staging
+  cancel-in-progress: true
 
 permissions: {}
 

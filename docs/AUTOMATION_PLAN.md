@@ -5,7 +5,9 @@
 > [`AUTOMATION_SETUP.md`](./AUTOMATION_SETUP.md). Écart avec ce plan : la PR de l'agent est
 > ouverte directement (pas en brouillon), car l'approbation obligatoire suffit à bloquer la
 > fusion et un brouillon empêcherait l'auto-merge. La promotion vers `main` utilise un commit
-> de fusion pour que `main` contienne toujours `staging`.
+> de fusion pour que `main` contienne toujours `staging`. Le bug de démo des filtres est
+> corrigé sur `main` et `staging`; il reste sur `demo/broken-directory-filters`, ciblée par
+> les issues dont le titre commence par `[démo]`.
 
 But : qu'une issue bien écrite devienne une fonctionnalité testable en staging
 sans que j'aie à guider l'agent étape par étape, avec des points d'arrêt clairs
@@ -328,7 +330,7 @@ transforme la démo en vrai pipeline.
 
 ## 5. Déroulé de la vidéo (3–4 min)
 
-1. **Déclencheur (20 s)** : issue « Ventes + En accueil affiche 3 personnes
+1. **Déclencheur (20 s)** : issue « [démo] Ventes + En accueil affiche 3 personnes
    au lieu de 1 », je pose `agent:ready`.
 2. **Plan sans moi (30 s)** : commentaire de triage : cause probable dans
    `filterEmployees`, test à écrire, hypothèses.
