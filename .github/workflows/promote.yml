@@ -27,7 +27,7 @@ jobs:
         run: echo "::notice::GitHub App de l'agent non configurée (docs/AUTOMATION_SETUP.md); promotion ignorée."
       - id: app
         if: env.HAS_APP == 'true'
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.AGENT_APP_ID }}
           private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
