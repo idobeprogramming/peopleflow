@@ -1,4 +1,4 @@
-# One-time GitHub configuration for the PeopleFlow delivery workflow. Safe to re-run.
+﻿# One-time GitHub configuration for the PeopleFlow delivery workflow. Safe to re-run.
 # Requires a token with admin rights on the repository, kept only in this PowerShell session:
 #   $env:GH_TOKEN = 'github_pat_...'
 #   .\scripts\setup-github.ps1
@@ -13,6 +13,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$script:limited = @()
 if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
   throw 'Définis GH_TOKEN avec un jeton GitHub ayant les droits administrateur du dépôt.'
 }
@@ -27,8 +29,9 @@ $api = "https://api.github.com/repos/$Repository"
 function Invoke-GitHub([string]$Method, [string]$Uri, $Body = $null) {
   $parameters = @{ Method = $Method; Uri = $Uri; Headers = $headers }
   if ($null -ne $Body) {
-    $parameters.Body = ($Body | ConvertTo-Json -Depth 10)
-    $parameters.ContentType = 'application/json'
+    # Windows PowerShell 5.1 would send a string body as ISO-8859-1; send UTF-8 bytes instead.
+    $parameters.Body = [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 10))
+    $parameters.ContentType = 'application/json; charset=utf-8'
   }
   Invoke-RestMethod @parameters
 }
@@ -48,7 +51,7 @@ Invoke-GitHub PUT "$api/actions/permissions/workflow" @{
 } | Out-Null
 
 Step 'Labels'
-$labels = Get-Content -Raw (Join-Path $PSScriptRoot '..\.github\labels.json') | ConvertFrom-Json
+$labels = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot '..\.github\labels.json') | ConvertFrom-Json
 foreach ($label in $labels) {
   try {
     Invoke-GitHub POST "$api/labels" @{ name = $label.name; color = $label.color; description = $label.description } | Out-Null
@@ -70,7 +73,12 @@ try {
   Write-Host "  staging créée depuis main ($($main.object.sha.Substring(0, 7)))."
 }
 
+function Test-PlanLimit($ErrorRecord) {
+  return "$ErrorRecord" -match 'Upgrade to GitHub Pro|make this repository public'
+}
+
 function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear) {
+  try {
   Invoke-GitHub PUT "$api/branches/$Branch/protection" @{
     required_status_checks = @{ strict = $true; contexts = $RequiredChecks }
     enforce_admins = $EnforceAdmins
@@ -84,6 +92,11 @@ function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear) {
     required_conversation_resolution = $true
   } | Out-Null
   Write-Host "  $Branch protégée."
+  } catch {
+    if (-not (Test-PlanLimit $_)) { throw }
+    Write-Warning "$Branch non protégée : un dépôt privé exige GitHub Pro pour la protection de branches."
+    $script:limited += "protection de $Branch"
+  }
 }
 
 Step 'Protection des branches'
@@ -100,20 +113,41 @@ Invoke-GitHub PUT "$api/environments/staging" @{
 try {
   Invoke-GitHub POST "$api/environments/staging/deployment-branch-policies" @{ name = 'staging'; type = 'branch' } | Out-Null
 } catch { }
-Invoke-GitHub PUT "$api/environments/production" @{
-  reviewers = @(@{ type = 'User'; id = $me.id })
-  deployment_branch_policy = @{ protected_branches = $false; custom_branch_policies = $true }
-} | Out-Null
+try {
+  Invoke-GitHub PUT "$api/environments/production" @{
+    reviewers = @(@{ type = 'User'; id = $me.id })
+    deployment_branch_policy = @{ protected_branches = $false; custom_branch_policies = $true }
+  } | Out-Null
+  $productionApproval = $true
+} catch {
+  if (-not (Test-PlanLimit $_)) { throw }
+  Invoke-GitHub PUT "$api/environments/production" @{
+    deployment_branch_policy = @{ protected_branches = $false; custom_branch_policies = $true }
+  } | Out-Null
+  $productionApproval = $false
+  $script:limited += 'approbation des déploiements production'
+}
 try {
   Invoke-GitHub POST "$api/environments/production/deployment-branch-policies" @{ name = 'main'; type = 'branch' } | Out-Null
 } catch { }
-Write-Host "  production demande l'approbation de $($me.login)."
+if ($productionApproval) { Write-Host "  production demande l'approbation de $($me.login)." }
+else { Write-Warning "production créée sans approbation obligatoire (GitHub Pro requis pour un dépôt privé)." }
+
+if ($script:limited.Count -gt 0) {
+  Write-Host @"
+
+ATTENTION — non disponible sur ce dépôt privé avec un compte gratuit :
+  - $($script:limited -join "`n  - ")
+L'agent n'active pas l'auto-merge sur une branche non protégée : ses PR attendent ta fusion.
+Pour tout activer : rendre le dépôt public (gratuit) ou passer à GitHub Pro, puis relancer ce script.
+"@ -ForegroundColor Yellow
+}
 
 Write-Host @"
 
 Fait. Il reste ce que ce script ne peut pas faire pour toi (voir docs/AUTOMATION_SETUP.md) :
   1. Créer la GitHub App « PeopleFlow Agent », l'installer sur $Repository,
      puis : variable AGENT_APP_ID + secret AGENT_APP_PRIVATE_KEY.
-  2. Secrets OPENAI_API_KEY (agent) et ANTHROPIC_API_KEY (revue IA, facultatif).
+  2. Secret ANTHROPIC_API_KEY (Claude : triage, implémentation, correction et revue).
   3. Pour déployer : secrets et variables des environnements staging et production.
 "@ -ForegroundColor Green

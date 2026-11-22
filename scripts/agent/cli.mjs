@@ -45,7 +45,13 @@ const commands = {
   },
 
   triage([file, labelsJson = '[]']) {
-    const decision = decideTriage(readFileSync(file, 'utf8'), { labels: JSON.parse(labelsJson) })
+    let raw = ''
+    try {
+      raw = readFileSync(file, 'utf8')
+    } catch {
+      // The agent did not write its decision; decideTriage reports it as a failure.
+    }
+    const decision = decideTriage(raw, { labels: JSON.parse(labelsJson) })
     output('action', decision.action)
     if (decision.action === 'fail') {
       output('comment', `### ⚠️ Triage impossible\n\n${decision.reason}`)

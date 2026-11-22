@@ -18,6 +18,7 @@ Règles :
    pousse rien : le workflow publie.
 6. Relis ton diff : aucune donnée réelle, aucun secret, aucun fichier sans rapport.
 
-Termine par le JSON demandé par le schéma. Dans `commands`, mets chaque commande de
+Termine en écrivant `.agent/report.json` : un objet JSON conforme à
+`scripts/agent/report.schema.json`. Dans `commands`, mets chaque commande de
 vérification lancée et son vrai code de sortie. Si quelque chose reste faux ou incertain,
 dis-le dans `openQuestions` au lieu de l'omettre. Textes en français.

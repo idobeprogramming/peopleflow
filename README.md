@@ -37,7 +37,7 @@ Une issue créée avec un modèle (Fonctionnalité ou Bogue) devient une PR vers
 quand un collaborateur pose le label `agent:ready` :
 
 ```text
-agent:ready → triage (plan ou questions) → implémentation Codex → garde-fous
+agent:ready → triage (plan ou questions) → implémentation Claude → garde-fous
 → vérification sur un runner neuf (tests, Supabase, E2E, secrets) → PR + rapport
 → revue IA → approbation humaine → auto-merge → déploiement staging → smoke tests
 ```

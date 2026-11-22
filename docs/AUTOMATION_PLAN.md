@@ -5,7 +5,8 @@
 > [`AUTOMATION_SETUP.md`](./AUTOMATION_SETUP.md). Écart avec ce plan : la PR de l'agent est
 > ouverte directement (pas en brouillon), car l'approbation obligatoire suffit à bloquer la
 > fusion et un brouillon empêcherait l'auto-merge. La promotion vers `main` utilise un commit
-> de fusion pour que `main` contienne toujours `staging`. Le bug de démo des filtres est
+> de fusion pour que `main` contienne toujours `staging`. Depuis le 22 novembre, Claude fait
+> le triage, l'implémentation, la correction et la revue (Codex n'est plus utilisé). Le bug de démo des filtres est
 > corrigé sur `main` et `staging`; il reste sur `demo/broken-directory-filters`, ciblée par
 > les issues dont le titre commence par `[démo]`.
 

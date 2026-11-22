@@ -11,8 +11,8 @@ git push origin main
 
 ## 2. Configurer GitHub (script)
 
-Créer un jeton à grain fin avec le droit **Administration : lecture et écriture** sur le dépôt,
-puis :
+Créer un jeton à grain fin limité au dépôt, avec **Administration**, **Contents**,
+**Environments** et **Issues** en lecture et écriture (7 jours suffisent), puis :
 
 ```powershell
 $env:GH_TOKEN = 'github_pat_...'
@@ -29,6 +29,12 @@ Le script est rejouable. Il :
 - crée `staging` depuis `main`;
 - protège `main` et `staging` (CI obligatoire, 1 approbation, CODEOWNERS);
 - crée les environnements `staging` et `production` (production exige ton approbation).
+
+**Dépôt privé avec un compte gratuit :** GitHub refuse la protection de branches et
+l'approbation des déploiements. Le script le signale et continue. L'agent n'active alors
+jamais l'auto-merge (sur une branche non protégée, il fusionnerait sans attendre) : ses PR
+restent ouvertes jusqu'à ta fusion. Rendre le dépôt public ou passer à GitHub Pro, puis
+relancer le script, active tout.
 
 ## 3. Créer la GitHub App de l'agent
 
@@ -51,14 +57,17 @@ Les PR ouvertes avec `GITHUB_TOKEN` ne déclenchent pas la CI. L'agent publie do
 
 | Nom | Type | Usage | Obligatoire |
 | --- | --- | --- | --- |
-| `OPENAI_API_KEY` | secret | Codex : triage, implémentation, correction | oui |
-| `ANTHROPIC_API_KEY` | secret | Revue IA des PR de l'agent | non (revue ignorée sinon) |
-| `AGENT_MODEL` | variable | Modèle Codex pour coder | non |
-| `AGENT_TRIAGE_MODEL` | variable | Modèle Codex plus léger pour le triage | non |
+| `ANTHROPIC_API_KEY` | secret | Claude : triage, implémentation, correction et revue | oui |
+| `AGENT_MODEL` | variable | Modèle Claude pour coder (ex. `claude-opus-5-5`) | non |
+| `AGENT_TRIAGE_MODEL` | variable | Modèle plus léger pour le triage (ex. `claude-haiku-5-5`) | non |
 | `AGENT_BASE_BRANCH` | variable | Branche cible (défaut `staging`) | non |
 | `AI_REVIEW` | variable | `off` pour couper la revue IA | non |
 
-Mettre une limite de dépense mensuelle sur les deux comptes d'API.
+Mettre une limite de dépense mensuelle sur le compte Anthropic (console.anthropic.com).
+
+La revue IA utilise aussi Claude, dans une session séparée qui ne voit que le diff, l'issue
+et ses propres consignes, jamais le raisonnement de l'implémentation. C'est moins
+indépendant qu'un autre fournisseur; les garde-fous et la CI restent les vrais filets.
 
 ## 5. Déploiement (facultatif pour la démo)
 

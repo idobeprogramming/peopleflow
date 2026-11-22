@@ -32,7 +32,7 @@ jobs:
       REPO: ${{ github.repository }}
       ISSUE: ${{ github.event.issue.number }}
       SENDER: ${{ github.event.sender.login }}
-      HAS_OPENAI: ${{ secrets.OPENAI_API_KEY != '' }}
+      HAS_ANTHROPIC: ${{ secrets.ANTHROPIC_API_KEY != '' }}
       HAS_APP: ${{ vars.AGENT_APP_ID != '' && secrets.AGENT_APP_PRIVATE_KEY != '' }}
     steps:
       - name: Vérifier que le label vient d'un collaborateur
@@ -45,7 +45,7 @@ jobs:
       - name: Vérifier la configuration
         run: |
           missing=()
-          [ "$HAS_OPENAI" = true ] || missing+=("le secret OPENAI_API_KEY")
+          [ "$HAS_ANTHROPIC" = true ] || missing+=("le secret ANTHROPIC_API_KEY")
           [ "$HAS_APP" = true ] || missing+=("la variable AGENT_APP_ID et le secret AGENT_APP_PRIVATE_KEY (GitHub App)")
           if [ ${#missing[@]} -gt 0 ]; then
             body="### ⚙️ Agent non configuré"$'\n\n'"Il manque : $(IFS=';'; echo "${missing[*]}")."$'\n\n'"Voir docs/AUTOMATION_SETUP.md."
@@ -88,14 +88,16 @@ jobs:
       - name: Écrire l'issue comme fichier de données
         id: issue
         run: node scripts/agent/cli.mjs write-issue .agent
-      - uses: openai/codex-action@v1
+      - name: Triage par Claude
+        uses: anthropics/claude-code-action@v1
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt-file: scripts/agent/triage.prompt.md
-          output-schema-file: scripts/agent/triage.schema.json
-          output-file: .agent/triage.json
-          sandbox: read-only
-          model: ${{ vars.AGENT_TRIAGE_MODEL }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: Lis scripts/agent/triage.prompt.md et suis exactement ses consignes.
+          claude_args: >-
+            --max-turns 30
+            --allowedTools "Read,Glob,Grep,Write"
+            ${{ vars.AGENT_TRIAGE_MODEL && format('--model {0}', vars.AGENT_TRIAGE_MODEL) || '' }}
       - name: Décider
         id: decide
         env:
@@ -152,14 +154,16 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - uses: openai/codex-action@v1
+      - name: Implémentation par Claude
+        uses: anthropics/claude-code-action@v1
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt-file: scripts/agent/implement.prompt.md
-          output-schema-file: scripts/agent/report.schema.json
-          output-file: .agent/report.json
-          sandbox: workspace-write
-          model: ${{ vars.AGENT_MODEL }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: Lis scripts/agent/implement.prompt.md et suis exactement ses consignes.
+          claude_args: >-
+            --max-turns 80
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm ci),Bash(npm test:*),Bash(npm run:*),Bash(npx vitest:*),Bash(npx tsc:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(ls:*)"
+            ${{ vars.AGENT_MODEL && format('--model {0}', vars.AGENT_MODEL) || '' }}
       - name: Exporter le patch
         env:
           BASE: ${{ needs.preflight.outputs.base_sha }}
@@ -271,7 +275,13 @@ jobs:
           url=$(gh pr create --base "$BASE_BRANCH" --head "$branch" --title "$TITLE" --body-file "$RUNNER_TEMP/proposal/report.md")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           gh pr edit "$url" --add-label agent:review
-          gh pr merge "$url" --auto --squash || echo "::warning::Auto-merge indisponible; activer « Allow auto-merge » dans les réglages du dépôt."
+          # Auto-merge only waits for approval when the base branch is protected; on an
+          # unprotected branch it would merge at once, so the PR is left for a person instead.
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY/branches/$BASE_BRANCH" --jq .protected)" = true ]; then
+            gh pr merge "$url" --auto --squash || echo "::warning::Auto-merge indisponible; la PR attend une fusion manuelle."
+          else
+            echo "::warning::$BASE_BRANCH n'est pas protégée : pas d'auto-merge, la PR attend ta fusion."
+          fi
       - name: Prévenir sur l'issue
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
