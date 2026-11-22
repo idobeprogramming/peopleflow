@@ -23,7 +23,7 @@ jobs:
       STAGING_URL: ${{ vars.STAGING_URL }}
       AGENT_BASE_BRANCH: ${{ vars.AGENT_BASE_BRANCH || 'staging' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           sparse-checkout: scripts/agent
