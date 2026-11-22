@@ -1,4 +1,4 @@
-# Creates an isolated worktree for one issue so several local agents can run in parallel.
+﻿# Creates an isolated worktree for one issue so several local agents can run in parallel.
 #   .\scripts\agent-worktree.ps1 -Issue 12            -> ..\peopleflow-wt\issue-12 on branch feature/issue-12
 #   .\scripts\agent-worktree.ps1 -Issue 12 -Start     -> also starts web and API on dedicated ports
 param(

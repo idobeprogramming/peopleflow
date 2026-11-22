@@ -1,4 +1,4 @@
-# Run once in a dedicated Windows checkout to serve the latest merged main.
+﻿# Run once in a dedicated Windows checkout to serve the latest merged main.
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 $node = (Get-Command node.exe).Source

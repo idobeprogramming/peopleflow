@@ -15,4 +15,6 @@ Tu fais le triage d'une demande pour le dépôt PeopleFlow. Tu ne modifies aucun
    - `destructive` si des données existantes sont modifiées, supprimées ou contraintes.
 6. `plan.tests` décrit le test qui doit échouer avant la correction.
 
-Réponds uniquement avec le JSON demandé par le schéma. Textes en français.
+Écris ta décision dans `.agent/triage.json` : un seul objet JSON conforme à
+`scripts/agent/triage.schema.json`, sans texte autour. Ne crée ni ne modifie aucun autre
+fichier. Textes en français.

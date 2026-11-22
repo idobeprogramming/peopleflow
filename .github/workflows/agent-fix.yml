@@ -138,14 +138,16 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - uses: openai/codex-action@v1
+      - name: Correction par Claude
+        uses: anthropics/claude-code-action@v1
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt-file: scripts/agent/fix.prompt.md
-          output-schema-file: scripts/agent/report.schema.json
-          output-file: .agent/report.json
-          sandbox: workspace-write
-          model: ${{ vars.AGENT_MODEL }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: Lis scripts/agent/fix.prompt.md et suis exactement ses consignes.
+          claude_args: >-
+            --max-turns 60
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm ci),Bash(npm test:*),Bash(npm run:*),Bash(npx vitest:*),Bash(npx tsc:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(ls:*)"
+            ${{ vars.AGENT_MODEL && format('--model {0}', vars.AGENT_MODEL) || '' }}
       - name: Exporter le patch
         env:
           BASE: ${{ needs.context.outputs.head_sha }}
