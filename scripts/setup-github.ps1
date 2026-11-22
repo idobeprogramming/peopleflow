@@ -102,10 +102,10 @@ try {
   Write-Host "  staging créée depuis main ($($main.object.sha.Substring(0, 7)))."
 }
 
-function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear) {
+function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear, [bool]$UpToDate) {
   try {
   Invoke-GitHub PUT "$api/branches/$Branch/protection" @{
-    required_status_checks = @{ strict = $true; contexts = $RequiredChecks }
+    required_status_checks = @{ strict = $UpToDate; contexts = $RequiredChecks }
     enforce_admins = $EnforceAdmins
     required_pull_request_reviews = @{
       dismiss_stale_reviews = $true; require_code_owner_reviews = $true; required_approving_review_count = 1
@@ -125,10 +125,13 @@ function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear) {
 }
 
 Step 'Protection des branches'
-# main: merge commits from the staging promotion PR, no admin bypass.
-Protect 'main' $true $false
-# staging: squash only; the owner keeps admin bypass for their own PRs (a solo owner cannot approve them).
-Protect 'staging' $false $true
+# main: merge commits from the staging promotion PR, no admin bypass. Not "up to date":
+# each promotion adds a merge commit that linear staging can never contain, and the PR's
+# CI already tests staging merged into main.
+Protect 'main' $true $false $false
+# staging: squash only, up to date before merge; the owner keeps admin bypass for their own
+# PRs (a solo owner cannot approve them).
+Protect 'staging' $false $true $true
 
 Step 'Environnements staging et production'
 $me = Invoke-RestMethod -Uri 'https://api.github.com/user' -Headers $headers

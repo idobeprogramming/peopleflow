@@ -45,7 +45,9 @@ Le script `scripts/setup-github.ps1` active les règles suivantes :
 - une approbation obligatoire;
 - revue du propriétaire pour les fichiers sensibles;
 - CI obligatoire;
-- branche à jour avant fusion;
+- branche à jour avant fusion, sur `staging` seulement : chaque promotion ajoute à `main`
+  un commit de fusion que `staging` (linéaire) ne peut pas contenir, et la CI de la PR teste
+  déjà `staging` fusionnée dans `main`;
 - historique linéaire sur `staging` (squash); commit de fusion pour la PR de promotion vers `main`;
 - conversations résolues;
 - force push et suppression interdits;
