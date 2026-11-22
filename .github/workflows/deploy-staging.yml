@@ -1,0 +1,52 @@
+# Every merge into staging is checked again, then deployed and smoke-tested.
+name: Déploiement staging
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: CI
+    uses: ./.github/workflows/checks.yml
+    permissions:
+      contents: read
+
+  deploy:
+    needs: checks
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+      issues: write
+
+  notify:
+    name: Prévenir les issues livrées
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      APP_URL: ${{ vars.STAGING_URL }}
+    steps:
+      - name: Commenter les issues fermées par ce commit
+        run: |
+          pr=$(gh api "repos/$REPO/commits/$GITHUB_SHA/pulls" --jq '.[0].number // empty')
+          [ -n "$pr" ] || exit 0
+          for issue in $(gh pr view "$pr" --repo "$REPO" --json closingIssuesReferences --jq '.closingIssuesReferences[].number'); do
+            gh issue comment "$issue" --repo "$REPO" --body "🚀 Déployé en staging (${GITHUB_SHA:0:7})${APP_URL:+ — à essayer : $APP_URL}."
+            gh issue edit "$issue" --repo "$REPO" --remove-label agent:review || true
+          done

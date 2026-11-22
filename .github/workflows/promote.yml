@@ -1,0 +1,48 @@
+# Opens (or refreshes) the staging -> main promotion PR after each change on staging.
+# Uses the agent App token so the PR triggers CI (a GITHUB_TOKEN PR would not).
+# Merging it still requires the main branch protection: one approval and green CI.
+name: Promotion vers production
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: promote-staging
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  promote:
+    name: PR staging → main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+      - name: Ouvrir ou mettre à jour la PR
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          ahead=$(gh api "repos/$REPO/compare/main...staging" --jq .ahead_by)
+          if [ "$ahead" = 0 ]; then echo "staging n'a rien de nouveau."; exit 0; fi
+          {
+            echo "## Changements à promouvoir ($ahead commits)"
+            echo
+            gh api "repos/$REPO/compare/main...staging" --jq '.commits[] | "- \(.commit.message | split("\n")[0]) (\(.sha[0:7]))"'
+            echo
+            echo "Vérifier staging avant d'approuver. La fusion déclenche le déploiement production."
+          } > body.md
+          existing=$(gh pr list --repo "$REPO" --base main --head staging --state open --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --repo "$REPO" --body-file body.md
+          else
+            gh pr create --repo "$REPO" --base main --head staging --title "Promotion staging → production" --body-file body.md
+          fi

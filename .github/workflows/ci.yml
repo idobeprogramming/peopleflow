@@ -4,71 +4,16 @@ on:
   push:
     branches: [main, staging]
   pull_request:
-    branches: [main, staging]
+    branches: [main, staging, 'demo/**']
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   checks:
-    name: Tests, typage et build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Récupérer le dépôt
-        uses: actions/checkout@v5
-
-      - name: Installer Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Installer les dépendances
-        run: npm ci
-
-      - name: Exécuter les tests
-        run: npm test
-
-      - name: Exécuter le scénario de démonstration
-        run: npm run test:demo
-
-      - name: Vérifier le typage
-        run: npm run typecheck
-
-      - name: Construire les applications
-        run: npm run build
-
-  database:
-    name: Migrations Supabase
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Récupérer le dépôt
-        uses: actions/checkout@v5
-
-      - name: Installer Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Installer les dépendances
-        run: npm ci
-
-      - name: Démarrer Supabase local
-        run: npx supabase start
-
-      - name: Réinitialiser la base avec les migrations et le seed
-        run: npx supabase db reset --local
-
-      - name: Vérifier le schéma
-        run: npx supabase db lint --local --fail-on error
-
-      - name: Arrêter Supabase
-        if: always()
-        run: npx supabase stop --no-backup
+    name: CI
+    uses: ./.github/workflows/checks.yml

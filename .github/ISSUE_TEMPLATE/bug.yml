@@ -1,0 +1,40 @@
+name: Bogue
+description: Un comportement incorrect qu'on peut reproduire.
+labels: [bug]
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: Étapes pour reproduire
+      placeholder: |
+        1. Ouvrir Employés
+        2. Choisir Ventes et En accueil
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Résultat attendu
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Résultat obtenu
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Commande ou test qui montre le problème
+      placeholder: npm run test:demo
+  - type: dropdown
+    id: migration
+    attributes:
+      label: Changement de schéma
+      options:
+        - Non
+        - Oui, ajout seulement (table, colonne nullable, index)
+        - Oui, modification ou suppression de données existantes
+    validations:
+      required: true

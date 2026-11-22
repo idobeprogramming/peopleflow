@@ -1,0 +1,43 @@
+# End-of-day report: shipped to staging, waiting for review, needs a decision.
+# Doubles as the script for the daily progress video.
+name: Rapport quotidien
+
+on:
+  schedule:
+    - cron: '43 21 * * 1-5' # 16 h 43 (heure de l'Est), en semaine
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  report:
+    name: Rapport
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STAGING_URL: ${{ vars.STAGING_URL }}
+      AGENT_BASE_BRANCH: ${{ vars.AGENT_BASE_BRANCH || 'staging' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/agent
+      - name: Rédiger le rapport
+        run: |
+          today=$(TZ=America/Toronto date +%F)
+          node scripts/agent/cli.mjs daily "$today" report.md
+          echo "TODAY=$today" >> "$GITHUB_ENV"
+      - name: Publier dans l'issue « Rapports quotidiens »
+        run: |
+          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'in:title "Rapports quotidiens"' --json number --jq '.[0].number')
+          if [ -z "$issue" ]; then
+            issue=$(gh issue create --repo "$GITHUB_REPOSITORY" --title "Rapports quotidiens" \
+              --body "Un commentaire par jour ouvrable, publié par le workflow Rapport quotidien." | grep -oE '[0-9]+$')
+            gh issue pin "$issue" --repo "$GITHUB_REPOSITORY" || true
+          fi
+          gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body-file report.md

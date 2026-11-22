@@ -1,0 +1,48 @@
+name: Fonctionnalité
+description: Une petite fonctionnalité qu'un agent ou une personne peut livrer dans une seule PR.
+labels: [feature]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Une demande = un comportement vérifiable. Quand elle est complète, un
+        collaborateur pose le label `agent:ready` pour lancer l'agent.
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexte
+      description: Qui a le problème et pourquoi ça compte.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Comportement attendu
+      description: Ce que la personne voit ou peut faire une fois la fonctionnalité livrée.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critères d'acceptation
+      description: Une ligne par critère vérifiable par un test.
+      placeholder: |
+        - [ ] Choisir Ventes et En accueil affiche seulement Nicolas Gagnon
+        - [ ] La recherche par nom fonctionne toujours seule
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Hors périmètre
+      description: Ce que l'agent ne doit pas toucher.
+  - type: dropdown
+    id: migration
+    attributes:
+      label: Changement de schéma
+      options:
+        - Non
+        - Oui, ajout seulement (table, colonne nullable, index)
+        - Oui, modification ou suppression de données existantes
+    validations:
+      required: true

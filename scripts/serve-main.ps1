@@ -48,6 +48,16 @@ try {
                 ) -RedirectStandardOutput 'peopleflow-local.log' -RedirectStandardError 'peopleflow-local-error.log'
                 $runningCommit = $target
                 Write-Host "Démarrage de PeopleFlow pour $target. Journal : peopleflow-local.log"
+                $healthy = $false
+                for ($i = 0; $i -lt 30 -and !$server.HasExited; $i++) {
+                    Start-Sleep -Seconds 3
+                    try {
+                        $healthy = (Invoke-RestMethod -TimeoutSec 2 'http://localhost:3000/api/health').status -eq 'ok'
+                    } catch { }
+                    if ($healthy) { break }
+                }
+                if ($healthy) { Write-Host "PeopleFlow répond sur http://localhost:5173 ($($target.Substring(0, 7)))." }
+                else { Write-Warning 'PeopleFlow ne répond pas après 90 s. Voir peopleflow-local-error.log.' }
             }
         } catch {
             Write-Warning $_.Exception.Message

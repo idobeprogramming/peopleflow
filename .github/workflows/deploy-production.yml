@@ -1,0 +1,47 @@
+# Production deploys only from main, which only receives PRs from staging (see promote.yml).
+# Configure required reviewers on the `production` environment so a person approves each deploy.
+name: Déploiement production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: CI
+    uses: ./.github/workflows/checks.yml
+    permissions:
+      contents: read
+
+  deploy:
+    needs: checks
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+      issues: write
+
+  release:
+    name: Tag et notes de version
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Créer la release
+        run: |
+          tag="v$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes --title "PeopleFlow $tag"
+          echo "Release $tag" >> "$GITHUB_STEP_SUMMARY"
