@@ -1,0 +1,121 @@
+# Turns a failed pipeline run into an issue a person can act on: failed jobs and steps, the end
+# of the failing log, and a read-only diagnosis by Claude. One open issue per workflow; repeated
+# failures add a comment. CI failures on pull requests are ordinary feedback and are skipped.
+name: Signalement des échecs
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+      - Agent d'issue
+      - Correction par l'agent
+      - Revue IA
+      - Promotion vers production
+      - Rapport quotidien
+      - Synchronisation de la démo
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: pipeline-alert-${{ github.event.workflow_run.name }}
+  cancel-in-progress: false
+
+jobs:
+  report:
+    name: Ouvrir ou compléter l'issue
+    if: >-
+      contains(fromJSON('["failure","startup_failure","timed_out"]'), github.event.workflow_run.conclusion)
+      && (github.event.workflow_run.name != 'CI' || github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      WORKFLOW: ${{ github.event.workflow_run.name }}
+      BRANCH: ${{ github.event.workflow_run.head_branch }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      EVENT: ${{ github.event.workflow_run.event }}
+      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      HAS_CLAUDE: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' || secrets.ANTHROPIC_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+            scripts
+      - name: Lire le run en échec
+        run: |
+          mkdir -p .alert
+          gh run view "$RUN_ID" --repo "$REPO" --json jobs --jq '
+            .jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled")
+            | "- **\(.name)** (\(.conclusion)) : " + ([.steps[] | select(.conclusion == "failure") | .name] | join(", "))
+          ' > .alert/jobs.md || true
+          [ -s .alert/jobs.md ] || echo "- (le run n'a démarré aucun job : erreur de configuration du workflow)" > .alert/jobs.md
+          # Secrets are masked by GitHub in logs; ANSI colours and timestamps are stripped.
+          gh run view "$RUN_ID" --repo "$REPO" --log-failed 2>/dev/null \
+            | sed -E 's/\x1b\[[0-9;]*m//g; s/^[^\t]*\t[^\t]*\t[0-9TZ:.-]+ //' \
+            | grep -vE 'Pulling fs layer|Download complete|Pull complete|Already exists|Waiting$' \
+            | tail -n 60 > .alert/log.txt || true
+          {
+            echo "Workflow : $WORKFLOW ($CONCLUSION)"
+            echo "Événement : $EVENT sur $BRANCH ($SHA)"
+            echo "Jobs en échec :"
+            cat .alert/jobs.md
+          } > .alert/context.md
+      - name: Diagnostic par Claude (lecture seule)
+        if: env.HAS_CLAUDE == 'true'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          allowed_bots: peopleflow-agent,github-actions
+          prompt: Lis scripts/agent/alert.prompt.md et suis exactement ses consignes.
+          claude_args: >-
+            --max-turns 15
+            --allowedTools "Read,Glob,Grep,Write"
+      - name: Écrire l'issue
+        run: |
+          title="Pipeline : « $WORKFLOW » en échec"
+          {
+            echo "### ❌ $WORKFLOW — $CONCLUSION"
+            echo
+            echo "- Run : $RUN_URL"
+            echo "- Événement : \`$EVENT\` sur \`$BRANCH\` (\`${SHA:0:7}\`)"
+            echo
+            echo "**Jobs et étapes en échec**"
+            cat .alert/jobs.md
+            if [ -s .alert/diagnosis.md ]; then
+              echo
+              echo "**Diagnostic de Claude** _(lecture seule, à vérifier)_"
+              echo
+              head -c 4000 .alert/diagnosis.md
+            fi
+            echo
+            echo "<details><summary>Fin du journal en échec</summary>"
+            echo
+            echo "\`\`\`text"
+            head -c 6000 .alert/log.txt
+            echo "\`\`\`"
+            echo "</details>"
+          } > .alert/body.md
+          export TITLE="$title"
+          existing=$(gh issue list --repo "$REPO" --state open --label incident --search "in:title \"$title\"" \
+            --json number,title --jq '.[] | select(.title == env.TITLE) | .number' | head -1)
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" --body-file .alert/body.md
+            echo "Issue #$existing complétée." >> "$GITHUB_STEP_SUMMARY"
+          else
+            url=$(gh issue create --repo "$REPO" --title "$title" --label incident --label needs-human --body-file .alert/body.md)
+            echo "Issue créée : $url" >> "$GITHUB_STEP_SUMMARY"
+          fi
