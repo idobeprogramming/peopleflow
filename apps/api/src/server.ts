@@ -1,7 +1,7 @@
 import { config } from 'dotenv'
 import { fileURLToPath } from 'node:url'
 import { serve } from '@hono/node-server'
-import { createConfiguredEmployeeRepository } from './employees/supabase-repository.js'
+import { createConfiguredEmployeeRepository } from './configure-repository.js'
 import { createServerApp, serverOptionsFromEnv } from './http.js'
 
 config({ path: fileURLToPath(new URL('../../../.env', import.meta.url)) })

@@ -16,6 +16,19 @@ describe('employee directory API', () => {
     location: 'Montréal',
   }
 
+  it('maps a duplicate email from the service to an HTTP conflict', async () => {
+    const app = createApp()
+    const request = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newEmployee),
+    }
+    expect((await app.request('/api/employees', request)).status).toBe(201)
+    const duplicate = await app.request('/api/employees', request)
+    expect(duplicate.status).toBe(409)
+    expect(await duplicate.json()).toEqual({ error: 'Cette adresse courriel est déjà utilisée.' })
+  })
+
   it('returns the fictional seed employees with their department', async () => {
     const response = await createApp(createMemoryEmployeeRepository()).request(
       '/api/employees',

@@ -8,10 +8,7 @@ import type {
   OnboardingTask,
   OnboardingTaskStatus,
 } from '../../../../packages/domain/src/types.js'
-import {
-  createMemoryEmployeeRepository,
-  type EmployeeRepository,
-} from './memory-repository.js'
+import type { EmployeeRepository } from './repository.js'
 
 interface EmployeeRow {
   id: string
@@ -185,15 +182,4 @@ export function createSupabaseEmployeeRepository(
       return employee
     },
   }
-}
-
-export function createConfiguredEmployeeRepository(): EmployeeRepository {
-  const url = process.env.SUPABASE_URL
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (url && serviceRoleKey) {
-    return createSupabaseEmployeeRepository(url, serviceRoleKey)
-  }
-
-  return createMemoryEmployeeRepository()
 }

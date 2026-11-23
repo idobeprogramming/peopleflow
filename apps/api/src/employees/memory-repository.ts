@@ -1,7 +1,7 @@
+import type { EmployeeRepository } from './repository.js'
 import type {
   Activity,
   Department,
-  CreateEmployeeInput,
   Employee,
   OnboardingTask,
 } from '../../../../packages/domain/src/types.js'
@@ -188,17 +188,6 @@ const seedOnboardingTasks: OnboardingTask[] = [
     sortOrder: 2,
   },
 ]
-
-export interface EmployeeRepository {
-  listEmployees(): Promise<Employee[]>
-  getEmployee(id: string): Promise<Employee | null>
-  listDepartments(): Promise<Department[]>
-  listOnboardingTasks(employeeId?: string): Promise<OnboardingTask[]>
-  setTaskStatus(id: string, status: 'done' | 'pending'): Promise<OnboardingTask | null>
-  listActivity(): Promise<Activity[]>
-  updateEmployee(id: string, input: CreateEmployeeInput): Promise<Employee>
-  createEmployee(input: CreateEmployeeInput): Promise<Employee>
-}
 
 export function createMemoryEmployeeRepository(
   initialEmployees: Employee[] = seedEmployees,
