@@ -65,10 +65,11 @@ Le script peut recevoir un autre dépôt avec `-Repository owner/repository`.
 
 ## Approbations
 
-`staging` exige une PR et les 4 checks, sans approbation et sans exception pour les admins :
+`staging` exige une PR et les checks, sans approbation et sans exception pour les admins :
 seul sur le dépôt, le propriétaire ne peut pas approuver ses propres PR, et une règle qu'on
-contourne à chaque fois ne protège rien. Les PR de l'agent n'activent jamais l'auto-merge : le
-clic de fusion d'une personne est la revue. `main` exige en plus une approbation, possible
+contourne à chaque fois ne protège rien. Les PR de l'agent y attendent le clic d'une personne
+et le check « Verdict de la revue ». Seule la branche de démo se fusionne automatiquement, après
+CI et revue réussies. Si la revue bloque à tort, reprendre le travail sur une branche `fix/...`. `main` exige en plus une approbation, possible
 puisque la PR de promotion est ouverte par l'App de l'agent.
 
 ## Synchronisation de la démo

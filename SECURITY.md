@@ -11,8 +11,10 @@ Réponse visée : 7 jours.
 | --- | --- |
 | Ouvrir une issue, commenter | tout le monde (dépôt public) |
 | Lancer l'agent (`agent:ready`) | droit d'écriture, revérifié par l'API dans le workflow |
-| `/agent fix` sur une PR | droit d'écriture, revérifié par l'API |
-| Fusionner dans `staging` | PR et 4 checks verts, sans exception (admin compris); une PR d'agent n'est jamais fusionnée automatiquement |
+| Répondre à une question de l'agent (`needs-info`) | auteur de l'issue ou droit d'écriture, si l'issue a été autorisée |
+| `/agent update`, `/agent fix` | droit d'écriture, revérifié par l'API |
+| Fusion automatique | branche de démo seulement : PR de l'App, CI et revue réussies sur le même commit |
+| Fusionner dans `staging` | PR et 4 checks verts, sans exception (admin compris); une PR d'agent n'y est jamais fusionnée automatiquement |
 | Fusionner dans `main` | PR de promotion, 4 checks verts, approbation du propriétaire, sans exception |
 | Déployer en production | approbation de l'environnement `production` |
 
@@ -37,7 +39,15 @@ avec de vraies données.
   migration ou un diff de plus de 400 lignes.
 - Les actions tierces qui reçoivent des secrets sont épinglées par SHA de commit.
 
+- La revue IA n'a aucun droit d'écriture. Un job séparé publie son verdict et échoue s'il n'est
+  pas conforme; un test affaibli bloque même si la revue ne l'a pas vu.
+- L'autorisation et les compteurs vivent dans un commentaire de `github-actions[bot]`; un
+  commentaire de toute autre personne est ignoré comme état.
+
 ## Risque résiduel accepté
+
+Une fois l'issue autorisée, son auteur peut la modifier ou répondre sans nouvelle relecture.
+Retirer le label `needs-info` ou fermer l'issue arrête toute reprise.
 
 Claude exécute les tests du dépôt (`npm run …`) pendant qu'il a accès au jeton de
 l'abonnement. Une issue piégée pourrait en théorie lui faire exécuter du code qui lit

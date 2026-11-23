@@ -1,115 +1,107 @@
-# Issue -> triage -> implementation -> guardrails -> independent checks -> PR to staging.
-# Started only when a collaborator with write access adds the `agent:ready` label.
+# The single delivery chain of an issue: triage or existing patch -> Claude -> guardrails ->
+# independent checks -> last look at the issue -> one PR, opened or updated.
+# Started by agent-events.yml (or by hand, which requires write access). One run per issue at a time.
 name: Agent d'issue
+run-name: "Agent d'issue #${{ inputs.issue }} (${{ inputs.mode }})"
 
 on:
-  issues:
-    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Numéro de l'issue
+        required: true
+      mode:
+        description: Raison du lancement
+        type: choice
+        options: [start, resume, update, adapt, correct, review]
+        default: update
+      seed_run:
+        description: Run dont le patch non publié est repris
+        default: ''
+      log_run:
+        description: Run dont le journal en échec est à corriger
+        default: ''
+      review_run:
+        description: Run de revue dont les défauts sont à corriger
+        default: ''
+      head_sha:
+        description: Commit de la PR visé; un commit plus récent annule le run
+        default: ''
 
 permissions: {}
 
 concurrency:
-  group: agent-issue-${{ github.event.issue.number }}
+  group: agent-issue-${{ inputs.issue }}
   cancel-in-progress: false
 
-env:
-  # Issues titled "[démo] ..." go to the isolated regression branch used for the video;
-  # everything else targets staging.
-  BASE_BRANCH: ${{ startsWith(github.event.issue.title, '[démo]') && 'demo/broken-directory-filters' || vars.AGENT_BASE_BRANCH || 'staging' }}
-
 jobs:
-  preflight:
+  prepare:
     name: Préparation
-    if: github.event.label.name == 'agent:ready' && github.event.issue.pull_request == null
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      actions: read
+      contents: read
       issues: write
+      pull-requests: write
     outputs:
-      base_sha: ${{ steps.base.outputs.sha }}
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REPO: ${{ github.repository }}
-      ISSUE: ${{ github.event.issue.number }}
-      SENDER: ${{ github.event.sender.login }}
-      HAS_CLAUDE: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
-      HAS_APP: ${{ vars.AGENT_APP_ID != '' && secrets.AGENT_APP_PRIVATE_KEY != '' }}
+      path: ${{ steps.prepare.outputs.path }}
+      base_branch: ${{ steps.prepare.outputs.base_branch }}
+      base_sha: ${{ steps.prepare.outputs.base_sha }}
+      pr: ${{ steps.prepare.outputs.pr }}
+      branch: ${{ steps.prepare.outputs.branch }}
+      labels: ${{ steps.prepare.outputs.labels }}
+      title: ${{ steps.prepare.outputs.title }}
     steps:
-      - name: Vérifier que le label vient d'un collaborateur
-        run: |
-          permission=$(gh api "repos/$REPO/collaborators/$SENDER/permission" --jq .permission || echo none)
-          case "$permission" in
-            admin|maintain|write) echo "Label posé par $SENDER ($permission)." ;;
-            *) echo "::error::$SENDER n'a pas le droit d'écriture; l'agent ne démarre pas."; exit 1 ;;
-          esac
-      - name: Vérifier la configuration
-        run: |
-          missing=()
-          [ "$HAS_CLAUDE" = true ] || missing+=("le secret CLAUDE_CODE_OAUTH_TOKEN (abonnement) ou ANTHROPIC_API_KEY (API)")
-          [ "$HAS_APP" = true ] || missing+=("la variable AGENT_APP_ID et le secret AGENT_APP_PRIVATE_KEY (GitHub App)")
-          if [ ${#missing[@]} -gt 0 ]; then
-            body="### ⚙️ Agent non configuré"$'\n\n'"Il manque : $(IFS=';'; echo "${missing[*]}")."$'\n\n'"Voir docs/AUTOMATION_SETUP.md."
-            gh issue comment "$ISSUE" --repo "$REPO" --body "$body"
-            gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:ready
-            exit 1
-          fi
-      - name: Résoudre la branche de base
-        id: base
-        run: |
-          sha=$(gh api "repos/$REPO/branches/$BASE_BRANCH" --jq .commit.sha) || {
-            gh issue comment "$ISSUE" --repo "$REPO" --body "### ⚙️ La branche \`$BASE_BRANCH\` n'existe pas. Lancer \`scripts/setup-github.ps1\`."
-            exit 1
-          }
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-      - name: Annoncer la prise en charge
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/agent
+      - id: prepare
+        run: node scripts/agent/cli.mjs prepare .agent
         env:
-          BASE_SHA: ${{ steps.base.outputs.sha }}
-        run: |
-          gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:ready --remove-label needs-info \
-            --remove-label agent:failed --add-label agent:working
-          gh issue comment "$ISSUE" --repo "$REPO" --body "🤖 Je prends la demande sur \`$BASE_BRANCH\` (${BASE_SHA:0:7}). Triage en cours — [suivre l'exécution]($GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID)."
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ inputs.issue }}
+          MODE: ${{ inputs.mode }}
+          SEED_RUN: ${{ inputs.seed_run }}
+          LOG_RUN: ${{ inputs.log_run }}
+          REVIEW_RUN: ${{ inputs.review_run }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+          AGENT_BASE_BRANCH: ${{ vars.AGENT_BASE_BRANCH }}
+          AGENT_MAINTAINER: ${{ vars.AGENT_MAINTAINER }}
+          HAS_CLAUDE: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+          HAS_APP: ${{ vars.AGENT_APP_ID != '' && secrets.AGENT_APP_PRIVATE_KEY != '' }}
+      - if: steps.prepare.outputs.path != 'stop'
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-context
+          path: .agent/
+          include-hidden-files: true
+          overwrite: true
+          retention-days: 7
 
   triage:
     name: Triage
-    needs: preflight
+    needs: prepare
+    if: needs.prepare.outputs.path == 'triage'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
-      issues: read
       id-token: write
     outputs:
       action: ${{ steps.decide.outputs.action }}
       comment: ${{ steps.decide.outputs.comment }}
-      labels: ${{ steps.issue.outputs.labels }}
+      reason: ${{ steps.decide.outputs.reason }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.preflight.outputs.base_sha }}
+          ref: ${{ needs.prepare.outputs.base_sha }}
           persist-credentials: false
-      # The agent reads answers to its questions: comments by the issue author, collaborators
-      # with write access and the pipeline's bots. Anyone else's comments are left out.
-      - name: Lire la discussion de l'issue
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          ISSUE: ${{ github.event.issue.number }}
-          AUTHOR: ${{ github.event.issue.user.login }}
-        run: |
-          mkdir -p .agent
-          gh api --paginate "repos/$REPO/issues/$ISSUE/comments" \
-            --jq '.[] | {user: {login: .user.login}, created_at, body}' | jq -s . > .agent/comments.json
-          trusted=()
-          for login in $(jq -r '.[].user.login' .agent/comments.json | sort -u); do
-            [ "$login" = "$AUTHOR" ] && continue
-            case "$login" in *'[bot]') continue ;; esac
-            permission=$(gh api "repos/$REPO/collaborators/$login/permission" --jq .permission 2>/dev/null || echo none)
-            case "$permission" in admin|maintain|write) trusted+=("$login") ;; esac
-          done
-          jq -n '$ARGS.positional' --args "${trusted[@]}" > .agent/trusted.json
-      - name: Écrire l'issue comme fichier de données
-        id: issue
-        run: node scripts/agent/cli.mjs write-issue .agent
+      - uses: actions/download-artifact@v8
+        with:
+          name: agent-context
+          path: .agent
       - name: Triage par Claude
         uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1
         with:
@@ -117,67 +109,107 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
-          prompt: Lis scripts/agent/triage.prompt.md et suis exactement ses consignes.
+          # agent-events.yml dispatches this workflow with the workflow token.
+          allowed_bots: github-actions
+          prompt: Lis .agent/triage.prompt.md et suis exactement ses consignes.
           claude_args: >-
             --max-turns 30
             --allowedTools "Read,Glob,Grep,Write"
             ${{ vars.AGENT_TRIAGE_MODEL && format('--model {0}', vars.AGENT_TRIAGE_MODEL) || '' }}
+      # Checked out after Claude worked, so the deciding code is untouched.
+      - uses: actions/checkout@v7
+        with:
+          path: .trusted
+          persist-credentials: false
+          sparse-checkout: scripts/agent
       - name: Décider
         id: decide
         env:
-          LABELS: ${{ steps.issue.outputs.labels }}
-        run: node scripts/agent/cli.mjs triage .agent/triage.json "$LABELS"
+          LABELS: ${{ needs.prepare.outputs.labels }}
+        run: node .trusted/scripts/agent/cli.mjs triage .agent/triage.json "$LABELS"
       - uses: actions/upload-artifact@v7
         with:
-          name: agent-context
-          path: .agent/
+          name: agent-plan
+          path: |
+            .agent/triage.plan.md
+            .agent/triage.questions.json
+          if-no-files-found: ignore
           include-hidden-files: true
+          overwrite: true
           retention-days: 7
 
-  announce-plan:
+  announce:
     name: Publier le triage
-    needs: [preflight, triage]
+    needs: [prepare, triage]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      actions: write
+      contents: read
       issues: write
+      pull-requests: write
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
-      ISSUE: ${{ github.event.issue.number }}
+      ISSUE: ${{ inputs.issue }}
       ACTION: ${{ needs.triage.outputs.action }}
       COMMENT: ${{ needs.triage.outputs.comment }}
+      REASON: ${{ needs.triage.outputs.reason }}
+      AGENT_MAINTAINER: ${{ vars.AGENT_MAINTAINER }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/agent
+      - if: needs.triage.outputs.action == 'ask'
+        uses: actions/download-artifact@v8
+        with:
+          name: agent-plan
+          path: ${{ runner.temp }}/plan
       - run: |
-          gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT"
           case "$ACTION" in
-            ask) gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:working --add-label needs-info ;;
-            human) gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:working --add-label needs-human ;;
-            fail) gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:working --add-label agent:failed ;;
+            ask) node scripts/agent/cli.mjs ask "$RUNNER_TEMP/plan/triage.questions.json" ;;
+            implement) gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT" ;;
+            human)
+              gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT"
+              node scripts/agent/cli.mjs stop ;;
+            fail) node scripts/agent/cli.mjs stop ;;
           esac
 
   implement:
     name: Implémentation
-    needs: [preflight, triage]
-    if: needs.triage.outputs.action == 'implement'
+    needs: [prepare, triage]
+    if: >-
+      !cancelled()
+      && (needs.prepare.outputs.path == 'fix'
+        || (needs.triage.result == 'success' && needs.triage.outputs.action == 'implement'))
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
       contents: read
       id-token: write
+    outputs:
+      outcome: ${{ steps.export.outputs.outcome }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.preflight.outputs.base_sha }}
+          ref: ${{ needs.prepare.outputs.base_sha }}
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
-          name: agent-context
+          pattern: agent-*
           path: .agent
+          merge-multiple: true
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Reprendre le patch non publié
+        run: |
+          if [ -s .agent/previous.patch ]; then
+            git apply --index .agent/previous.patch || echo "::notice::La base a changé : Claude reprend le patch à la main."
+          fi
       - run: npm ci
       - name: Implémentation par Claude
         uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1
@@ -186,33 +218,76 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
-          prompt: Lis scripts/agent/implement.prompt.md et suis exactement ses consignes.
+          allowed_bots: github-actions
+          prompt: Lis .agent/${{ needs.prepare.outputs.path == 'fix' && 'fix' || 'implement' }}.prompt.md et suis exactement ses consignes.
           claude_args: >-
             --max-turns 80
             --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm ci),Bash(npm test:*),Bash(npm run:*),Bash(npx vitest:*),Bash(npx tsc:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(ls:*)"
             ${{ vars.AGENT_MODEL && format('--model {0}', vars.AGENT_MODEL) || '' }}
       - name: Exporter le patch
+        id: export
         env:
-          BASE: ${{ needs.preflight.outputs.base_sha }}
+          BASE: ${{ needs.prepare.outputs.base_sha }}
         run: |
           mkdir -p "$RUNNER_TEMP/out"
           git add -A
           git diff --cached --binary "$BASE" > "$RUNNER_TEMP/out/proposal.patch"
           cp .agent/report.json "$RUNNER_TEMP/out/report.json" || echo '{}' > "$RUNNER_TEMP/out/report.json"
-          if [ ! -s "$RUNNER_TEMP/out/proposal.patch" ]; then
-            echo "::error::L'agent n'a produit aucun changement."
-            exit 1
+          if jq -e '(.questions // []) | length > 0' "$RUNNER_TEMP/out/report.json" > /dev/null; then
+            echo "outcome=ask" >> "$GITHUB_OUTPUT"
+          elif [ -s "$RUNNER_TEMP/out/proposal.patch" ]; then
+            echo "outcome=propose" >> "$GITHUB_OUTPUT"
+          else
+            echo "outcome=empty" >> "$GITHUB_OUTPUT"
           fi
           git diff --cached --stat "$BASE" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:
           name: proposal
           path: ${{ runner.temp }}/out/
+          overwrite: true
           retention-days: 14
+
+  ask:
+    name: Question ou absence de changement
+    needs: [prepare, implement]
+    if: >-
+      !cancelled() && needs.implement.result == 'success'
+      && needs.implement.outputs.outcome != 'propose'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE: ${{ inputs.issue }}
+      OUTCOME: ${{ needs.implement.outputs.outcome }}
+      AGENT_MAINTAINER: ${{ vars.AGENT_MAINTAINER }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/agent
+      - uses: actions/download-artifact@v8
+        with:
+          name: proposal
+          path: ${{ runner.temp }}/proposal
+      - run: |
+          if [ "$OUTCOME" = ask ]; then
+            node scripts/agent/cli.mjs ask "$RUNNER_TEMP/proposal/report.json"
+          else
+            REASON="Claude n'a proposé aucun changement. $(jq -r '[.summary // empty, (.openQuestions // [])[]] | join(" ")' "$RUNNER_TEMP/proposal/report.json" | head -c 1500)" \
+              node scripts/agent/cli.mjs stop
+          fi
 
   guard:
     name: Garde-fous
-    needs: [preflight, triage, implement]
+    needs: [prepare, implement]
+    if: "!cancelled() && needs.implement.result == 'success' && needs.implement.outputs.outcome == 'propose'"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -222,126 +297,187 @@ jobs:
       comment: ${{ steps.guard.outputs.comment }}
       changed_lines: ${{ steps.guard.outputs.changed_lines }}
     steps:
-      # The base checkout is never patched here, so the guard code cannot be altered by the proposal.
+      # The guard code comes from the default branch; the proposal is applied next to it, never run.
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.preflight.outputs.base_sha }}
+          path: trusted
           persist-credentials: false
           sparse-checkout: scripts/agent
+      - uses: actions/checkout@v7
+        with:
+          path: work
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           name: proposal
           path: ${{ runner.temp }}/proposal
+      # On an existing PR the rules apply to the whole PR: a small correction of code whose test
+      # is already in the PR is not "code without a test".
+      - name: Reconstituer le diff complet
+        env:
+          BASE_BRANCH: ${{ needs.prepare.outputs.base_branch }}
+        run: |
+          git -C work apply --index "$RUNNER_TEMP/proposal/proposal.patch"
+          base=$(git -C work merge-base HEAD "origin/$BASE_BRANCH")
+          git -C work diff --cached --binary "$base" > "$RUNNER_TEMP/full.patch"
       - id: guard
         env:
-          LABELS: ${{ needs.triage.outputs.labels }}
-        run: node scripts/agent/cli.mjs guard "$RUNNER_TEMP/proposal/proposal.patch" "$LABELS"
+          LABELS: ${{ needs.prepare.outputs.labels }}
+        run: node trusted/scripts/agent/cli.mjs guard "$RUNNER_TEMP/full.patch" "$LABELS"
+
+  stopped:
+    name: Arrêt par les garde-fous
+    needs: [prepare, guard]
+    if: "!cancelled() && needs.guard.result == 'success' && needs.guard.outputs.verdict != 'ok'"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      ISSUE: ${{ inputs.issue }}
+      COMMENT: ${{ needs.guard.outputs.comment }}
+      AGENT_MAINTAINER: ${{ vars.AGENT_MAINTAINER }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/agent
+      - run: |
+          gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT"
+          REASON="les garde-fous ont arrêté le patch, conservé dans les artefacts de l'exécution." node scripts/agent/cli.mjs stop
 
   verify:
     name: Vérification indépendante
-    needs: [preflight, guard]
-    if: needs.guard.outputs.verdict == 'ok'
+    needs: [prepare, guard]
+    if: "!cancelled() && needs.guard.result == 'success' && needs.guard.outputs.verdict == 'ok'"
     # A called workflow can only use permissions its caller grants; the workflow default is none.
     permissions:
       contents: read
     uses: ./.github/workflows/checks.yml
     with:
-      ref: ${{ needs.preflight.outputs.base_sha }}
+      ref: ${{ needs.prepare.outputs.base_sha }}
       patch-artifact: proposal
 
   publish:
     name: Publication
-    needs: [preflight, guard, verify]
+    needs: [prepare, guard, verify]
+    if: "!cancelled() && needs.verify.result == 'success'"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      actions: write
       contents: read
+      issues: write
+      pull-requests: write
     env:
-      ISSUE: ${{ github.event.issue.number }}
-      BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
+      ISSUE: ${{ inputs.issue }}
+      BASE_BRANCH: ${{ needs.prepare.outputs.base_branch }}
+      BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+      PR: ${{ needs.prepare.outputs.pr }}
+      BRANCH: ${{ needs.prepare.outputs.branch }}
+      AGENT_MAINTAINER: ${{ vars.AGENT_MAINTAINER }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          path: trusted
+          persist-credentials: false
+          sparse-checkout: scripts/agent
+      - name: Relire la demande avant de publier
+        id: fresh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node trusted/scripts/agent/cli.mjs fresh
       # A GitHub App token is required: pull requests opened with GITHUB_TOKEN do not trigger CI.
       - id: app
+        if: steps.fresh.outputs.action == 'publish'
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.AGENT_APP_ID }}
           private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
-      - uses: actions/checkout@v7
+      - if: steps.fresh.outputs.action == 'publish'
+        uses: actions/checkout@v7
         with:
-          ref: ${{ env.BASE_BRANCH }}
+          path: work
+          ref: ${{ needs.prepare.outputs.base_sha }}
           token: ${{ steps.app.outputs.token }}
           fetch-depth: 0
-      - uses: actions/download-artifact@v8
+      - if: steps.fresh.outputs.action == 'publish'
+        uses: actions/download-artifact@v8
         with:
           name: proposal
           path: ${{ runner.temp }}/proposal
       - name: Rédiger le rapport
         id: report
+        if: steps.fresh.outputs.action == 'publish'
         env:
           CHANGED: ${{ needs.guard.outputs.changed_lines }}
-        run: node scripts/agent/cli.mjs report "$RUNNER_TEMP/proposal/report.json" "$ISSUE" "$CHANGED"
-      - name: Créer la branche et la PR
+        run: node trusted/scripts/agent/cli.mjs report "$RUNNER_TEMP/proposal/report.json" "$ISSUE" "$CHANGED"
+      - name: Ouvrir ou mettre à jour la PR
         id: pr
+        if: steps.fresh.outputs.action == 'publish'
+        working-directory: work
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           TITLE: ${{ steps.report.outputs.title }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_TITLE: ${{ needs.prepare.outputs.title }}
         run: |
-          slug=$(printf '%s' "$ISSUE_TITLE" | iconv -f utf8 -t ascii//TRANSLIT | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | cut -c1-40 | sed 's/-$//')
+          git config user.name 'peopleflow-agent[bot]'
+          git config user.email 'peopleflow-agent[bot]@users.noreply.github.com'
+          if [ -n "$PR" ]; then
+            git apply --index "$RUNNER_TEMP/proposal/proposal.patch"
+            git commit -q -m "$TITLE" -m "Refs #$ISSUE"
+            # Refused when someone pushed meanwhile: never force.
+            git push origin "HEAD:refs/heads/$BRANCH"
+            gh pr comment "$PR" --body-file "$RUNNER_TEMP/proposal/report.md"
+            echo "number=$PR" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          slug=$(printf '%s' "$ISSUE_TITLE" | iconv -f utf8 -t ascii//TRANSLIT | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | cut -c1-40 | sed 's/^-//; s/-$//')
           branch="agent/issue-$ISSUE-${slug:-change}-$GITHUB_RUN_ID"
-          git switch -c "$branch" "$BASE_SHA"
+          git switch -c "$branch"
           git apply --index "$RUNNER_TEMP/proposal/proposal.patch"
-          git -c user.name='peopleflow-agent[bot]' -c user.email='peopleflow-agent[bot]@users.noreply.github.com' \
-            commit -q -m "$TITLE" -m "Closes #$ISSUE"
-          head=$(git rev-parse "origin/$BASE_BRANCH")
-          if [ "$head" != "$BASE_SHA" ]; then
-            echo "$BASE_BRANCH a avancé pendant le travail; rebase sur $head."
+          git commit -q -m "$TITLE" -m "Closes #$ISSUE"
+          if [ "$(git rev-parse "origin/$BASE_BRANCH")" != "$BASE_SHA" ]; then
+            echo "$BASE_BRANCH a avancé pendant le travail; rebase."
             git rebase "origin/$BASE_BRANCH" || { git rebase --abort; echo "::error::Conflit avec $BASE_BRANCH."; exit 1; }
           fi
           git push origin "$branch"
           url=$(gh pr create --base "$BASE_BRANCH" --head "$branch" --title "$TITLE" --body-file "$RUNNER_TEMP/proposal/report.md")
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-          # Never auto-merge an agent PR: a person merging it is the human review.
-          gh pr edit "$url" --add-label agent:review
+          echo "number=${url##*/}" >> "$GITHUB_OUTPUT"
       - name: Prévenir sur l'issue
+        if: steps.fresh.outputs.action == 'publish'
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          PR_URL: ${{ steps.pr.outputs.url }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.pr.outputs.number }}
+          UPDATED: ${{ needs.prepare.outputs.pr != '' }}
         run: |
-          gh issue edit "$ISSUE" --remove-label agent:working --add-label agent:review
-          gh issue comment "$ISSUE" --body "✅ PR prête pour revue : $PR_URL"$'\n\n'"Elle attend ta revue : rien ne fusionne dans \`$BASE_BRANCH\` sans ton clic."
+          node trusted/scripts/agent/cli.mjs published "$RUNNER_TEMP/proposal/report.json"
+          verb=$([ "$UPDATED" = true ] && echo "mise à jour" || echo "ouverte")
+          if [ "$BASE_BRANCH" = demo/broken-directory-filters ]; then
+            next="Branche de démo : fusion automatique après CI et revue réussies."
+          else
+            next="Elle attend ta revue : rien ne fusionne dans \`$BASE_BRANCH\` sans ton clic."
+          fi
+          gh issue comment "$ISSUE" --repo "$REPO" --body "✅ PR #$PR $verb. $next"$'\n\n'"Pour la modifier : \`/agent update <précision>\` ici."
 
-  stopped:
-    name: Arrêt par les garde-fous
-    needs: [guard]
-    if: needs.guard.outputs.verdict == 'stop' || needs.guard.outputs.verdict == 'human'
-    runs-on: ubuntu-latest
-    permissions:
-      issues: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REPO: ${{ github.repository }}
-      ISSUE: ${{ github.event.issue.number }}
-      COMMENT: ${{ needs.guard.outputs.comment }}
-      LABEL: ${{ needs.guard.outputs.verdict == 'human' && 'needs-human' || 'agent:failed' }}
-    steps:
-      - run: |
-          gh issue comment "$ISSUE" --repo "$REPO" --body "$COMMENT"$'\n\n'"Le patch est conservé dans les artefacts de [l'exécution]($GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID)."
-          gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:working --add-label "$LABEL"
-
-  failed:
+  settle:
     name: Signaler l'échec
-    needs: [preflight, triage, implement, guard, verify, publish]
-    if: failure() && needs.preflight.result == 'success'
+    needs: [prepare, triage, announce, implement, ask, guard, stopped, verify, publish]
+    if: failure()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
-      issues: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REPO: ${{ github.repository }}
-      ISSUE: ${{ github.event.issue.number }}
+      actions: write
     steps:
-      - run: |
-          failed=$(gh run view "$GITHUB_RUN_ID" --repo "$REPO" --json jobs --jq '[.jobs[] | select(.conclusion=="failure") | .name] | join(", ")')
-          gh issue comment "$ISSUE" --repo "$REPO" --body "### ❌ Livraison échouée"$'\n\n'"Étape(s) : ${failed:-inconnue}."$'\n'"Journal : $GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"$'\n\n'"Corriger la demande puis reposer \`agent:ready\`."
-          gh issue edit "$ISSUE" --repo "$REPO" --remove-label agent:working --add-label agent:failed
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: gh workflow run agent-events.yml --repo "$REPO" -f run_id="$GITHUB_RUN_ID"

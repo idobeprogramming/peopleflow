@@ -12,6 +12,7 @@ Tu fais le triage d'une demande pour le dépôt PeopleFlow. Tu ne modifies aucun
    - `ready: true` seulement si les critères d'acceptation sont vérifiables par un test
      et si le périmètre tient dans une petite PR (moins de 400 lignes).
    - Sinon `ready: false` et des `questions` précises, fermées si possible, en français.
+   - Si deux comportements produit sont plausibles, pose la question au lieu de choisir.
 6. `plan.schemaChange` :
    - `none` si aucun fichier sous `supabase/` ne change;
    - `additive` pour une nouvelle table, une colonne nullable ou un index;
@@ -19,5 +20,5 @@ Tu fais le triage d'une demande pour le dépôt PeopleFlow. Tu ne modifies aucun
 7. `plan.tests` décrit le test qui doit échouer avant la correction.
 
 Écris ta décision dans `.agent/triage.json` : un seul objet JSON conforme à
-`scripts/agent/triage.schema.json`, sans texte autour. Ne crée ni ne modifie aucun autre
+`.agent/triage.schema.json`, sans texte autour. Ne crée ni ne modifie aucun autre
 fichier. Textes en français.

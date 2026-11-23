@@ -1,4 +1,6 @@
-# Second-opinion review of agent pull requests by a different model. It comments; it never approves.
+# Second review of agent pull requests, in a session that only sees the issue and the diff.
+# Claude writes a verdict file and has no write access; a separate job publishes it and is the
+# merge gate. agent-events.yml sends the result to Claude, the author or a maintainer.
 name: Revue IA
 
 on:
@@ -15,7 +17,7 @@ jobs:
   review:
     name: Revue IA
     if: >-
-      startsWith(github.head_ref, 'agent/')
+      startsWith(github.head_ref, 'agent/issue-')
       && github.event.pull_request.head.repo.full_name == github.repository
       && vars.AI_REVIEW != 'off'
     runs-on: ubuntu-latest
@@ -23,29 +25,94 @@ jobs:
     permissions:
       contents: read
       issues: read
-      pull-requests: write
+      pull-requests: read
       id-token: write
-    env:
-      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
     steps:
-      - if: env.HAS_KEY != 'true'
-        run: echo "::notice::Ni CLAUDE_CODE_OAUTH_TOKEN ni ANTHROPIC_API_KEY; revue IA ignorée."
-      - if: env.HAS_KEY == 'true'
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - if: env.HAS_KEY == 'true'
-        uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1
+      # The reviewer's rules come from the default branch, not from the PR.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: .trusted
+          persist-credentials: false
+          sparse-checkout: scripts/agent
+      - name: Rassembler la demande et le diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node .trusted/scripts/agent/cli.mjs review-context .agent
+          gh api -H 'Accept: application/vnd.github.diff' "repos/$REPO/compare/$BASE...$HEAD" > .agent/pr.diff
+      - uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1
         with:
           # Either a Console API key or a subscription token from `claude setup-token` (Pro/Max).
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
-          # Agent PRs are opened by the agent's GitHub App. Allow that one bot, not every bot.
-          allowed_bots: peopleflow-agent
-          prompt: |
-            Dépôt ${{ github.repository }}, pull request #${{ github.event.pull_request.number }}.
-            Lis scripts/agent/review.prompt.md et suis exactement ses consignes.
+          # Agent PRs are opened by the agent's GitHub App. Retries come from the workflow bot.
+          allowed_bots: peopleflow-agent,github-actions
+          prompt: Lis .trusted/scripts/agent/review.prompt.md et suis exactement ses consignes.
           claude_args: >-
-            --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh issue view:*)"
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Write"
+            ${{ vars.AGENT_MODEL && format('--model {0}', vars.AGENT_MODEL) || '' }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: review-raw
+          path: .agent/review.json
+          if-no-files-found: ignore
+          include-hidden-files: true
+          overwrite: true
+          retention-days: 7
+
+  verdict:
+    name: Verdict de la revue
+    needs: review
+    # A crashed review must block the merge: GitHub counts a skipped required check as passed.
+    if: always() && needs.review.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - if: needs.review.result != 'success'
+        run: |
+          echo "::error::La revue n'a pas abouti; la fusion reste bloquée."
+          exit 1
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: scripts/agent
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: review-raw
+          path: ${{ runner.temp }}/review
+      - name: Publier le verdict
+        id: verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/review" "$RUNNER_TEMP/verdict"
+          gh api -H 'Accept: application/vnd.github.diff' "repos/$REPO/compare/$BASE...$HEAD" > "$RUNNER_TEMP/pr.diff"
+          node scripts/agent/cli.mjs review-verdict "$RUNNER_TEMP/review/review.json" "$RUNNER_TEMP/pr.diff" "$RUNNER_TEMP/verdict/verdict.json"
+      - if: always() && needs.review.result == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: review-verdict
+          path: ${{ runner.temp }}/verdict/
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 14
