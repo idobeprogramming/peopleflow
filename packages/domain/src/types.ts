@@ -64,3 +64,19 @@ export interface AuthUser {
   displayName: string
   role: UserRole
 }
+
+export interface EmployeeFilters {
+  query?: string
+  departmentId?: string
+  status?: string
+}
+
+export interface EmployeePage {
+  items: Employee[]
+  total: number
+}
+
+export interface DepartmentReport extends Department {
+  total: number
+  active: number
+}

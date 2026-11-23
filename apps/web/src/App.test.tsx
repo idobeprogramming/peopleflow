@@ -15,6 +15,8 @@ vi.mock('./api.js', () => ({
   getAuthOptions: vi.fn().mockResolvedValue({ demoAccount: null }),
   login: vi.fn(),
   logout: vi.fn().mockResolvedValue(undefined),
+  searchEmployees: vi.fn(),
+  getDepartmentReport: vi.fn(),
   listActivity: vi.fn().mockResolvedValue([]),
   listDepartments: vi.fn().mockResolvedValue([
     { id: 'department-sales', name: 'Ventes' },
@@ -93,6 +95,18 @@ describe('PeopleFlow app', () => {
     expect(await screen.findByRole('button', { name: 'Se connecter' })).toBeInTheDocument()
   })
 
+  it('keeps the workspace open after a failed logout and lets the user retry', async () => {
+    vi.mocked(api.getCurrentUser).mockResolvedValue(camille)
+    vi.mocked(api.logout).mockRejectedValueOnce(new Error('offline'))
+    const user = userEvent.setup()
+    render(<App />)
+    const button = await screen.findByRole('button', { name: 'Se déconnecter' })
+    await user.click(button)
+    expect(await screen.findByRole('alert')).toHaveTextContent('déconnexion')
+    await user.click(button)
+    expect(await screen.findByRole('button', { name: 'Se connecter' })).toBeInTheDocument()
+  })
+
   it('returns to the sign-in page when the session expires', async () => {
     vi.mocked(api.getCurrentUser).mockResolvedValue(camille)
     render(<App />)
@@ -103,8 +117,22 @@ describe('PeopleFlow app', () => {
     expect(await screen.findByRole('button', { name: 'Se connecter' })).toBeInTheDocument()
   })
 
+  it('renders report totals supplied by the database independently of directory size', async () => {
+    vi.mocked(api.getCurrentUser).mockResolvedValue(camille)
+    vi.mocked(api.getDepartmentReport).mockResolvedValue([{ id: 'sales', name: 'Ventes', total: 1200, active: 1150 }])
+    render(<App />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Rapports' }))
+    expect(await screen.findByText('1150 actifs')).toBeInTheDocument()
+    expect(screen.getByText('Effectif total').parentElement).toHaveTextContent('1200')
+  })
+
   it('loads the dashboard and filters the employee directory by name', async () => {
     vi.mocked(api.getCurrentUser).mockResolvedValue(camille)
+    vi.mocked(api.searchEmployees).mockImplementation(async ({ query }) => {
+      const rows = await api.listEmployees()
+      const items = rows.filter((row) => row.firstName.toLowerCase().includes(query ?? ''))
+      return { items, total: items.length }
+    })
     const user = userEvent.setup()
     render(<App />)
 

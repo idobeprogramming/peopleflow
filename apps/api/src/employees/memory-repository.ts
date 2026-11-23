@@ -1,3 +1,4 @@
+import { filterEmployees } from '../../../../packages/domain/src/directory.js'
 import type { EmployeeRepository } from './repository.js'
 import type {
   Activity,
@@ -242,8 +243,21 @@ export function createMemoryEmployeeRepository(
       record(employee.firstName + ' ' + employee.lastName + ' — profil modifié')
       return { ...employee }
     },
-    async listEmployees() {
-      return employees.map((employee) => ({ ...employee }))
+    async listEmployees(filters = {}) {
+      return filterEmployees(employees, filters.query ?? '', filters.departmentId, filters.status)
+        .map((employee) => ({ ...employee }))
+    },
+    async directoryPage(filters, offset, size) {
+      const rows = await this.listEmployees(filters)
+      rows.sort((a, b) => a.lastName.localeCompare(b.lastName)
+        || a.firstName.localeCompare(b.firstName) || a.id.localeCompare(b.id))
+      return { items: rows.slice(offset, offset + size), total: rows.length }
+    },
+    async departmentReport() {
+      return departments.map((department) => {
+        const members = employees.filter((employee) => employee.departmentId === department.id)
+        return { ...department, total: members.length, active: members.filter((e) => e.status === 'active').length }
+      })
     },
     async getEmployee(id) {
       const employee = employees.find((item) => item.id === id)

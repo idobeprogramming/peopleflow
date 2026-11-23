@@ -25,7 +25,15 @@ export function employeeController(service: EmployeeService) {
   })
   routes.get('/', async (context) => {
     const { q = '', departmentId, status } = context.req.query()
-    return context.json(await service.list(q, departmentId, status))
+    const filters = { query: q.trim(), departmentId, status }
+    const { offset, limit } = context.req.query()
+    if (offset === undefined && limit === undefined) return context.json(await service.list(filters))
+    const paging = z.object({
+      offset: z.coerce.number().int().min(0).max(2147483647),
+      limit: z.coerce.number().int().min(1).max(500),
+    }).safeParse({ offset: offset ?? 0, limit: limit ?? 50 })
+    if (!paging.success) return context.json({ error: 'Pagination invalide.' }, 400)
+    return context.json(await service.page(filters, paging.data.offset, paging.data.limit))
   })
   routes.get('/:id', async (context) => context.json(await service.get(context.req.param('id'))))
 
