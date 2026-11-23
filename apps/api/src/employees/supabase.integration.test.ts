@@ -21,6 +21,20 @@ describe.skipIf(!isLocal || !key)('Supabase repository against the seeded local 
     expect(nicolas).toMatchObject({ firstName: 'Nicolas', departmentName: 'Ventes', status: 'onboarding' })
   })
 
+  it('checks only the proposed reporting chain and excludes the current email owner', async () => {
+    const id = '10000000-0000-4000-8000-000000000001'
+    const employee = await repository.getEmployee(id)
+    if (!employee) throw new Error('Missing seed employee')
+    const checks = await repository.checkEmployeeSave({
+      ...employee, email: employee.email.toUpperCase(),
+      managerId: '10000000-0000-4000-8000-000000000003',
+    }, id)
+    expect(checks).toEqual({
+      employeeExists: true, departmentExists: true, managerExists: true,
+      managerCycle: true, emailTaken: false,
+    })
+  })
+
   it('persists a new employee with its department name', async () => {
     const [department] = await repository.listDepartments()
     const email = `integration.${Date.now()}@exemple.ca`

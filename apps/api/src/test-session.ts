@@ -2,7 +2,7 @@ import { createApp, type AppOptions } from './app.js'
 import { DEMO_USER } from './auth/demo-account.js'
 import { createMemoryAuthRepository } from './auth/memory-repository.js'
 import { createAuthService, hashToken } from './auth/service.js'
-import type { EmployeeRepository } from './employees/memory-repository.js'
+import type { EmployeeRepository } from './employees/repository.js'
 
 /** An app with an already signed-in demo user, so tests skip the deliberately slow password hash. */
 export async function createSignedInApp(employees?: EmployeeRepository, options: AppOptions = {}) {

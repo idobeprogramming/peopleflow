@@ -3,7 +3,7 @@ import { join, relative, resolve, sep } from 'node:path'
 import { Hono } from 'hono'
 import { secureHeaders } from 'hono/secure-headers'
 import { createApp, type AppOptions } from './app.js'
-import type { EmployeeRepository } from './employees/memory-repository.js'
+import type { EmployeeRepository } from './employees/repository.js'
 
 export interface ServerOptions extends AppOptions {
   /** Directory of the built web app (apps/web/dist). When set, the API also serves the SPA. */
