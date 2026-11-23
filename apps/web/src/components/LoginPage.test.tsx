@@ -71,6 +71,24 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText('Mot de passe')).toHaveValue('PeopleFlow-Demo-2026!')
   })
 
+  const projectIntro = "PeopleFlow est une application de démonstration de gestion d'employés : annuaire, fiches et accueil des nouveaux arrivants. Toutes les données sont fictives."
+
+  it('shows the project description after the tagline when the demo account is active', async () => {
+    vi.mocked(api.getAuthOptions).mockResolvedValue({
+      demoAccount: { email: 'camille.fortin@example.test', password: 'PeopleFlow-Demo-2026!' },
+    })
+    render(<LoginPage onSignedIn={vi.fn()} />)
+    const intro = await screen.findByText(projectIntro)
+    expect(screen.getByText('Accédez à votre espace RH.').nextElementSibling).toBe(intro)
+  })
+
+  it('hides the project description when the demo account is inactive', async () => {
+    vi.mocked(api.getAuthOptions).mockResolvedValue({ demoAccount: null })
+    render(<LoginPage onSignedIn={vi.fn()} />)
+    await screen.findByRole('button', { name: 'Se connecter' })
+    expect(screen.queryByText(projectIntro)).not.toBeInTheDocument()
+  })
+
   it('hides the demo account when the server does not allow it', async () => {
     vi.mocked(api.getAuthOptions).mockResolvedValue({ demoAccount: null })
     render(<LoginPage onSignedIn={vi.fn()} />)
