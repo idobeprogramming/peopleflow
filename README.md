@@ -59,18 +59,25 @@ quand un collaborateur pose le label `agent:ready` :
 flowchart TD
   I["Issue avec critères d'acceptation"] -->|"label agent:ready (droit d'écriture)"| T{"Triage par Claude"}
   T -->|"demande floue"| Q["Questions dans l'issue · needs-info"]
-  Q -->|"réponse en commentaire + agent:ready"| T
+  Q -->|"réponse de l'auteur ou d'un collaborateur"| T
   T -->|"plan"| C["Claude : test qui échoue, correctif, vérifications"]
   C --> G{"Garde-fous"}
   G -->|"seed, migration, dépendance, test affaibli, gros diff"| H["needs-human"]
   G -->|"OK"| V["Runner neuf : tests, Supabase, E2E, secrets, image Docker"]
-  V --> P["PR + rapport, ouverte par l'App de l'agent"]
-  P --> R["Revue IA en commentaire"]
+  V -->|"test rouge : 2 corrections"| C
+  V --> S{"Demande relue : précisée entre-temps?"}
+  S -->|"oui, même correctif"| C
+  S -->|"non"| P["PR unique, ouverte ou mise à jour par l'App"]
+  P --> R{"Revue IA : verdict bloquant"}
+  R -->|"défaut précis"| F
+  R -->|"ambiguïté"| Q
+  R -->|"test affaibli"| H
+  R -->|"conforme"| M
   P --> CI{"CI"}
   CI -->|"rouge"| F["Correction automatique, 2 essais"]
   F --> CI
   F -->|"toujours rouge"| H
-  CI -->|"verte"| M["Fusion dans staging (une personne)"]
+  CI -->|"verte"| M["Fusion dans staging (une personne; automatique sur la démo)"]
   M --> PR["PR de promotion ouverte par l'App"]
   PR -->|"approbation"| PROD["main, puis production"]
   X["Échec d'un workflow"] --> INC["Issue incident : journal + diagnostic de Claude"]
@@ -78,17 +85,25 @@ flowchart TD
   class M,PROD,H,INC,Q human
 ```
 
-Les étapes en couleur demandent une personne. Rien ne fusionne ni ne part en production
-sans elle, et l’agent ne modifie jamais les règles qui l’encadrent (`.github/`,
+Les étapes en couleur demandent une personne, sauf la fusion sur la branche de démo. Rien ne
+fusionne dans `staging` ni ne part en production sans elle, et l’agent ne modifie jamais les règles qui l’encadrent (`.github/`,
 `AGENTS.md`, `scripts/agent/`). Le triage lit les réponses à ses questions dans les
 commentaires de l’auteur et des collaborateurs, jamais dans ceux des autres.
 
 Une issue dont le titre commence par `[démo]` cible plutôt la branche
 `demo/broken-directory-filters`, qui garde volontairement le bug des filtres pour la vidéo.
 
-Si la CI échoue sur une PR de l'agent, ou sur `/agent fix <consigne>` en commentaire,
-l'agent corrige sur la même branche, deux fois au maximum, puis passe la main avec
-le label `needs-human`. La promotion `staging → main` reste une PR approuvée.
+Le label `agent:ready` est l'autorisation initiale. Ensuite, une réponse de l'auteur ou d'un
+collaborateur sur une issue `needs-info` relance le travail seule. `/agent update <précision>`
+sur l'issue (ou `/agent fix` sur la PR), réservé au droit d'écriture, met à jour la même PR;
+si elle est déjà fusionnée, l'agent propose une issue de suivi liée.
+
+| Échec | Repris par |
+| --- | --- |
+| test, typage, build, migration | Claude, avec le patch et le journal, deux fois par problème (quatre par demande) |
+| panne réseau ou du runner | GitHub Actions, un seul nouvel essai |
+| secret, permission, SQL destructif, sécurité, cause inconnue | un mainteneur (`needs-human`) |
+| comportement produit ambigu | l'auteur de l'issue (`needs-info`) | La promotion `staging → main` reste une PR approuvée.
 
 Détails : [`docs/AUTOMATION_PLAN.md`](./docs/AUTOMATION_PLAN.md). Mise en service
 (GitHub App, clés, déploiement) : [`docs/AUTOMATION_SETUP.md`](./docs/AUTOMATION_SETUP.md).

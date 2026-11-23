@@ -125,6 +125,9 @@ export function decideTriage(raw, { labels = [] } = {}) {
   if (!triage?.plan || typeof triage.plan.summary !== 'string') problems.push('plan.summary')
   if (problems.length) return { action: 'fail', reason: `Champs manquants dans le triage : ${problems.join(', ')}` }
 
+  if (!triage.ready && triage.questions.length === 0) {
+    return { action: 'human', triage, reason: 'Le triage juge la demande non exploitable sans poser de question.' }
+  }
   if (!triage.ready || triage.questions.length > 0) {
     return { action: 'ask', triage }
   }
@@ -146,7 +149,7 @@ export function renderTriageComment(decision) {
       '',
       ...triage.questions.map((question) => `- ${question}`),
       '',
-      'Répondez dans un commentaire puis reposez le label `agent:ready`.',
+      'Répondez dans un commentaire : je reprends automatiquement.',
     ].join('\n')
   }
   const plan = triage.plan
@@ -207,14 +210,6 @@ export function renderReport(report, { issue, changedLines } = {}) {
     `_Le runner de vérification a relancé toutes les vérifications sur un checkout neuf.${changedLines !== undefined ? ` ${changedLines} lignes modifiées.` : ''}_`,
     issue ? `\nCloses #${issue}` : '',
   ].join('\n')
-}
-
-/** Returns the next correction attempt number, or null when the budget is spent. */
-export function nextAttempt(labels, max = 2) {
-  for (let attempt = max; attempt >= 1; attempt -= 1) {
-    if (labels.includes(`agent:attempt-${attempt}`)) return attempt < max ? attempt + 1 : null
-  }
-  return 1
 }
 
 /** Daily report: what shipped, what is ready to test, what needs a person. */

@@ -18,7 +18,7 @@
     "check": "npm run test && npm run typecheck && npm run build",
     "dev:local": "supabase start && supabase migration up --local && node scripts/dev-local.mjs",
     "test:demo": "node --experimental-strip-types --test demo/directory.test.mjs",
-    "test:agent": "node --test scripts/agent/lib.test.mjs",
+    "test:agent": "node --test \"scripts/agent/*.test.mjs\"",
     "test:e2e": "playwright test",
     "test:integration": "node scripts/with-local-supabase.mjs vitest run integration.test",
     "db:start": "supabase start",

@@ -33,8 +33,11 @@ Le script est rejouable. Il :
 
 **Dépôt privé avec un compte gratuit :** GitHub refuse la protection de branches et
 l'approbation des déploiements. Le script le signale et continue. Rendre le dépôt public ou
-passer à GitHub Pro, puis relancer le script, active tout. Dans tous les cas, l'agent n'active
-jamais l'auto-merge : ses PR attendent ta fusion.
+passer à GitHub Pro, puis relancer le script, active tout. Vers `staging`, les PR de l'agent
+attendent toujours ta fusion.
+
+**Verdict de la revue :** le script exige aussi « Verdict de la revue » sur `staging`. Le relancer
+une fois les workflows présents sur `main` et `staging`.
 
 ## 3. Créer la GitHub App de l'agent
 
@@ -62,7 +65,9 @@ Les PR ouvertes avec `GITHUB_TOKEN` ne déclenchent pas la CI. L'agent publie do
 | `AGENT_MODEL` | variable | Modèle Claude pour coder (ex. `claude-opus-5-5`) | non |
 | `AGENT_TRIAGE_MODEL` | variable | Modèle plus léger pour le triage (ex. `claude-haiku-5-5`) | non |
 | `AGENT_BASE_BRANCH` | variable | Branche cible (défaut `staging`) | non |
-| `AI_REVIEW` | variable | `off` pour couper la revue IA | non |
+| `AI_REVIEW` | variable | `off` pour couper la revue IA (et donc son blocage et la fusion de démo) | non |
+| `AGENT_MAINTAINER` | variable | Compte mentionné pour les décisions (défaut : propriétaire du dépôt) | non |
+| `DEMO_AUTO_MERGE` | variable | `off` pour fusionner la démo à la main | non |
 
 Avec un abonnement, chaque issue consomme ton quota Claude (triage, implémentation, revue,
 corrections) : le même que tu utilises dans l'app et dans Claude Code. Le jeton est lié à ton
@@ -111,7 +116,8 @@ d'accès et le risque résiduel sont décrits dans [`SECURITY.md`](../SECURITY.m
 
 ## 7. Signalement des échecs
 
-`pipeline-alerts.yml` surveille les workflows de l'agent, la promotion, le rapport quotidien, la
+Les échecs de l'agent et de la revue sont routés sur l'issue elle-même par `agent-events.yml`.
+`pipeline-alerts.yml` surveille ce routage, la promotion, le rapport quotidien, la
 synchronisation de la démo et la CI des pushes sur `staging` et `main`. À chaque échec, il ouvre
 une issue `incident` + `needs-human` (ou la complète si elle est déjà ouverte) avec les étapes en
 échec, la fin du journal et un diagnostic de Claude en lecture seule. Claude propose un
@@ -125,7 +131,8 @@ correctif mais ne l'applique jamais : l'agent ne modifie pas les règles qui l'e
    encore (il est corrigé sur `main` et `staging`).
 2. Poser le label `agent:ready`.
 3. Suivre : commentaire de prise en charge → plan → PR vers la branche de démo avec rapport →
-   revue IA → ton approbation → fusion.
+   CI et revue IA → fusion automatique dans la branche de démo. Le bug disparaît alors de cette
+   branche : le remettre avant de rejouer la démo.
 
 Pour un essai sur `staging` (avec déploiement), prendre une issue sans `[démo]`, par exemple
 une ligne de `docs/demo-features.md` : « Recherche sans accents ».

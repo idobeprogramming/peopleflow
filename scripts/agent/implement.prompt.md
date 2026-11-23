@@ -17,9 +17,11 @@ Règles :
    `supabase/seed.sql` pour faire passer un test.
 5. Ne modifie jamais `.github/`, `AGENTS.md` ni `scripts/agent/`. Ne crée pas de commit, ne
    pousse rien : le workflow publie.
-6. Relis ton diff : aucune donnée réelle, aucun secret, aucun fichier sans rapport.
+6. Si deux comportements produit sont plausibles et que la discussion ne tranche pas, arrête-toi
+   et mets une seule question concrète dans `questions`.
+7. Relis ton diff : aucune donnée réelle, aucun secret, aucun fichier sans rapport.
 
 Termine en écrivant `.agent/report.json` : un objet JSON conforme à
-`scripts/agent/report.schema.json`. Dans `commands`, mets chaque commande de
+`.agent/report.schema.json`. Dans `commands`, mets chaque commande de
 vérification lancée et son vrai code de sortie. Si quelque chose reste faux ou incertain,
 dis-le dans `openQuestions` au lieu de l'omettre. Textes en français.
