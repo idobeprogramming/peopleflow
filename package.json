@@ -2,6 +2,9 @@
   "name": "peopleflow",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -17,7 +20,7 @@
     "test:demo": "node --experimental-strip-types --test demo/directory.test.mjs",
     "test:agent": "node --test scripts/agent/lib.test.mjs",
     "test:e2e": "playwright test",
-    "test:integration": "node scripts/with-local-supabase.mjs vitest run apps/api/src/employees/supabase.integration.test.ts",
+    "test:integration": "node scripts/with-local-supabase.mjs vitest run integration.test",
     "db:start": "supabase start",
     "db:reset": "supabase db reset"
   },

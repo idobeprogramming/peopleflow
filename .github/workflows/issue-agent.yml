@@ -32,7 +32,7 @@ jobs:
       REPO: ${{ github.repository }}
       ISSUE: ${{ github.event.issue.number }}
       SENDER: ${{ github.event.sender.login }}
-      HAS_ANTHROPIC: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+      HAS_CLAUDE: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
       HAS_APP: ${{ vars.AGENT_APP_ID != '' && secrets.AGENT_APP_PRIVATE_KEY != '' }}
     steps:
       - name: Vérifier que le label vient d'un collaborateur
@@ -45,7 +45,7 @@ jobs:
       - name: Vérifier la configuration
         run: |
           missing=()
-          [ "$HAS_ANTHROPIC" = true ] || missing+=("le secret ANTHROPIC_API_KEY")
+          [ "$HAS_CLAUDE" = true ] || missing+=("le secret CLAUDE_CODE_OAUTH_TOKEN (abonnement) ou ANTHROPIC_API_KEY (API)")
           [ "$HAS_APP" = true ] || missing+=("la variable AGENT_APP_ID et le secret AGENT_APP_PRIVATE_KEY (GitHub App)")
           if [ ${#missing[@]} -gt 0 ]; then
             body="### ⚙️ Agent non configuré"$'\n\n'"Il manque : $(IFS=';'; echo "${missing[*]}")."$'\n\n'"Voir docs/AUTOMATION_SETUP.md."
@@ -76,22 +76,46 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      issues: read
+      id-token: write
     outputs:
       action: ${{ steps.decide.outputs.action }}
       comment: ${{ steps.decide.outputs.comment }}
       labels: ${{ steps.issue.outputs.labels }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.preflight.outputs.base_sha }}
           persist-credentials: false
+      # The agent reads answers to its questions: comments by the issue author, collaborators
+      # with write access and the pipeline's bots. Anyone else's comments are left out.
+      - name: Lire la discussion de l'issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+        run: |
+          mkdir -p .agent
+          gh api --paginate "repos/$REPO/issues/$ISSUE/comments" \
+            --jq '.[] | {user: {login: .user.login}, created_at, body}' | jq -s . > .agent/comments.json
+          trusted=()
+          for login in $(jq -r '.[].user.login' .agent/comments.json | sort -u); do
+            [ "$login" = "$AUTHOR" ] && continue
+            case "$login" in *'[bot]') continue ;; esac
+            permission=$(gh api "repos/$REPO/collaborators/$login/permission" --jq .permission 2>/dev/null || echo none)
+            case "$permission" in admin|maintain|write) trusted+=("$login") ;; esac
+          done
+          jq -n '$ARGS.positional' --args "${trusted[@]}" > .agent/trusted.json
       - name: Écrire l'issue comme fichier de données
         id: issue
         run: node scripts/agent/cli.mjs write-issue .agent
       - name: Triage par Claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1
         with:
+          # Either a Console API key or a subscription token from `claude setup-token` (Pro/Max).
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           prompt: Lis scripts/agent/triage.prompt.md et suis exactement ses consignes.
           claude_args: >-
@@ -103,7 +127,7 @@ jobs:
         env:
           LABELS: ${{ steps.issue.outputs.labels }}
         run: node scripts/agent/cli.mjs triage .agent/triage.json "$LABELS"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: agent-context
           path: .agent/
@@ -140,29 +164,32 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: read
+      id-token: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.preflight.outputs.base_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: agent-context
           path: .agent
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - name: Implémentation par Claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1
         with:
+          # Either a Console API key or a subscription token from `claude setup-token` (Pro/Max).
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           prompt: Lis scripts/agent/implement.prompt.md et suis exactement ses consignes.
           claude_args: >-
             --max-turns 80
-            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm ci),Bash(npm test:*),Bash(npm run:*),Bash(npx vitest:*),Bash(npx tsc:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(ls:*)"
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm ci),Bash(npm test:*),Bash(npm run:*),Bash(npx vitest:*),Bash(npx tsc:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(ls:*)"
             ${{ vars.AGENT_MODEL && format('--model {0}', vars.AGENT_MODEL) || '' }}
       - name: Exporter le patch
         env:
@@ -177,7 +204,7 @@ jobs:
             exit 1
           fi
           git diff --cached --stat "$BASE" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: proposal
           path: ${{ runner.temp }}/out/
@@ -196,12 +223,12 @@ jobs:
       changed_lines: ${{ steps.guard.outputs.changed_lines }}
     steps:
       # The base checkout is never patched here, so the guard code cannot be altered by the proposal.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.preflight.outputs.base_sha }}
           persist-credentials: false
           sparse-checkout: scripts/agent
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: proposal
           path: ${{ runner.temp }}/proposal
@@ -235,16 +262,16 @@ jobs:
     steps:
       # A GitHub App token is required: pull requests opened with GITHUB_TOKEN do not trigger CI.
       - id: app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.AGENT_APP_ID }}
           private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.BASE_BRANCH }}
           token: ${{ steps.app.outputs.token }}
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: proposal
           path: ${{ runner.temp }}/proposal
@@ -274,21 +301,15 @@ jobs:
           git push origin "$branch"
           url=$(gh pr create --base "$BASE_BRANCH" --head "$branch" --title "$TITLE" --body-file "$RUNNER_TEMP/proposal/report.md")
           echo "url=$url" >> "$GITHUB_OUTPUT"
+          # Never auto-merge an agent PR: a person merging it is the human review.
           gh pr edit "$url" --add-label agent:review
-          # Auto-merge only waits for approval when the base branch is protected; on an
-          # unprotected branch it would merge at once, so the PR is left for a person instead.
-          if [ "$(gh api "repos/$GITHUB_REPOSITORY/branches/$BASE_BRANCH" --jq .protected)" = true ]; then
-            gh pr merge "$url" --auto --squash || echo "::warning::Auto-merge indisponible; la PR attend une fusion manuelle."
-          else
-            echo "::warning::$BASE_BRANCH n'est pas protégée : pas d'auto-merge, la PR attend ta fusion."
-          fi
       - name: Prévenir sur l'issue
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           PR_URL: ${{ steps.pr.outputs.url }}
         run: |
           gh issue edit "$ISSUE" --remove-label agent:working --add-label agent:review
-          gh issue comment "$ISSUE" --body "✅ PR prête pour revue : $PR_URL"$'\n\n'"Elle fusionnera dans \`$BASE_BRANCH\` après approbation et CI verte."
+          gh issue comment "$ISSUE" --body "✅ PR prête pour revue : $PR_URL"$'\n\n'"Elle attend ta revue : rien ne fusionne dans \`$BASE_BRANCH\` sans ton clic."
 
   stopped:
     name: Arrêt par les garde-fous

@@ -1,13 +1,13 @@
 # Mise en service du workflow automatisé
 
 Tout ce qui vit dans le dépôt est prêt. Ce document liste ce qui demande tes comptes
-(GitHub, OpenAI, Anthropic, hébergeur). Compter 30 à 45 minutes la première fois.
+(GitHub, Anthropic, hébergeur). Compter 30 à 45 minutes la première fois.
 
-## 1. Pousser le dépôt
+## 1. Règle de base
 
-```powershell
-git push origin main
-```
+`main` et `staging` sont protégées : tout changement passe par une PR vers `staging`,
+puis par la PR de promotion vers `main`. Voir
+[`BRANCHING_AND_RELEASES.md`](./BRANCHING_AND_RELEASES.md).
 
 ## 2. Configurer GitHub (script)
 
@@ -16,7 +16,7 @@ Créer un jeton à grain fin limité au dépôt, avec **Administration**, **Cont
 
 ```powershell
 $env:GH_TOKEN = 'github_pat_...'
-.\scripts\setup-github.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-github.ps1
 Remove-Item Env:GH_TOKEN
 ```
 
@@ -27,14 +27,14 @@ Le script est rejouable. Il :
 - met `GITHUB_TOKEN` en lecture seule par défaut;
 - crée les labels de `.github/labels.json`;
 - crée `staging` depuis `main`;
-- protège `main` et `staging` (CI obligatoire, 1 approbation, CODEOWNERS);
+- protège `staging` (PR et CI obligatoires, sans exception) et `main` (en plus, 1 approbation
+  et CODEOWNERS);
 - crée les environnements `staging` et `production` (production exige ton approbation).
 
 **Dépôt privé avec un compte gratuit :** GitHub refuse la protection de branches et
-l'approbation des déploiements. Le script le signale et continue. L'agent n'active alors
-jamais l'auto-merge (sur une branche non protégée, il fusionnerait sans attendre) : ses PR
-restent ouvertes jusqu'à ta fusion. Rendre le dépôt public ou passer à GitHub Pro, puis
-relancer le script, active tout.
+l'approbation des déploiements. Le script le signale et continue. Rendre le dépôt public ou
+passer à GitHub Pro, puis relancer le script, active tout. Dans tous les cas, l'agent n'active
+jamais l'auto-merge : ses PR attendent ta fusion.
 
 ## 3. Créer la GitHub App de l'agent
 
@@ -57,13 +57,17 @@ Les PR ouvertes avec `GITHUB_TOKEN` ne déclenchent pas la CI. L'agent publie do
 
 | Nom | Type | Usage | Obligatoire |
 | --- | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | secret | Claude : triage, implémentation, correction et revue | oui |
+| `CLAUDE_CODE_OAUTH_TOKEN` | secret | Claude avec ton abonnement Pro/Max (`claude setup-token`) | l'un des deux |
+| `ANTHROPIC_API_KEY` | secret | Claude avec une clé API de console.anthropic.com (facturé à l'usage) | l'un des deux |
 | `AGENT_MODEL` | variable | Modèle Claude pour coder (ex. `claude-opus-5-5`) | non |
 | `AGENT_TRIAGE_MODEL` | variable | Modèle plus léger pour le triage (ex. `claude-haiku-5-5`) | non |
 | `AGENT_BASE_BRANCH` | variable | Branche cible (défaut `staging`) | non |
 | `AI_REVIEW` | variable | `off` pour couper la revue IA | non |
 
-Mettre une limite de dépense mensuelle sur le compte Anthropic (console.anthropic.com).
+Avec un abonnement, chaque issue consomme ton quota Claude (triage, implémentation, revue,
+corrections) : le même que tu utilises dans l'app et dans Claude Code. Le jeton est lié à ton
+compte, à réserver à un dépôt personnel. Avec une clé API, mettre une limite de dépense
+mensuelle sur console.anthropic.com.
 
 La revue IA utilise aussi Claude, dans une session séparée qui ne voit que le diff, l'issue
 et ses propres consignes, jamais le raisonnement de l'implémentation. C'est moins
@@ -75,9 +79,10 @@ Recommandé : un service web **Render** à partir d'une image (`ghcr.io/idobepro
 et un projet **Supabase** par environnement. N'importe quel hébergeur avec un
 « deploy hook » qui accepte `imgURL` fonctionne aussi.
 
-Variables d'environnement du service (sur l'hébergeur) :
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASSWORD`.
-L'image refuse de démarrer sans auth Basic : l'application n'a pas encore de connexion.
+Variables d'environnement du service (sur l'hébergeur) : `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, `DEMO_ACCOUNT=true` pour afficher le compte de démo sur la page
+de connexion, et `TRUST_PROXY=true` derrière le proxy de l'hébergeur (adresse IP réelle pour
+la limite de tentatives). En production l'image active les cookies `Secure` et `__Host-`.
 
 Dans GitHub, **par environnement** (`staging`, puis `production`) :
 
@@ -87,14 +92,32 @@ Dans GitHub, **par environnement** (`staging`, puis `production`) :
 | `SUPABASE_PROJECT_REF` | variable | Référence du projet Supabase |
 | `SUPABASE_DB_PASSWORD` | secret | Mot de passe de la base |
 | `DEPLOY_HOOK` | secret | URL du deploy hook de l'hébergeur |
-| `BASIC_AUTH` | secret | `utilisateur:motdepasse`, pour les smoke tests |
+| `SMOKE_LOGIN` | secret | `courriel:motdepasse` d'un compte de test, pour que les smoke tests se connectent |
 
 Au niveau du dépôt : secret `SUPABASE_ACCESS_TOKEN` (jeton personnel Supabase) et variable
 `STAGING_URL` (utilisée dans les commentaires et le rapport quotidien).
 
-Chaque étape absente est sautée avec un avis dans le journal. La CI ne casse pas pour autant.
+Le déploiement reste désactivé tant que la variable de dépôt `DEPLOY_ENABLED` ne vaut pas
+`true`. Sans elle, la CI construit quand même l'image Docker pour vérifier le `Dockerfile`,
+mais ne publie rien et ne crée aucune release. Une fois activé, chaque étape dont le
+secret manque est sautée avec un avis dans le journal.
 
-## 6. Premier essai
+## 6. Sécurité
+
+`setup-github.ps1` active aussi le secret scanning, la push protection (un push contenant
+une clé est bloqué avant d'arriver sur GitHub), le signalement privé de vulnérabilités
+(`SECURITY.md`) et l'approbation obligatoire des workflows venant de forks. Le modèle
+d'accès et le risque résiduel sont décrits dans [`SECURITY.md`](../SECURITY.md).
+
+## 7. Signalement des échecs
+
+`pipeline-alerts.yml` surveille les workflows de l'agent, la promotion, le rapport quotidien, la
+synchronisation de la démo et la CI des pushes sur `staging` et `main`. À chaque échec, il ouvre
+une issue `incident` + `needs-human` (ou la complète si elle est déjà ouverte) avec les étapes en
+échec, la fin du journal et un diagnostic de Claude en lecture seule. Claude propose un
+correctif mais ne l'applique jamais : l'agent ne modifie pas les règles qui l'encadrent.
+
+## 8. Premier essai
 
 1. Ouvrir une issue avec le modèle **Bogue**, titrée
    « [démo] Ventes et En accueil affichent 3 personnes au lieu de Nicolas Gagnon ».

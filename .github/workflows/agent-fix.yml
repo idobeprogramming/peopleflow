@@ -51,8 +51,17 @@ jobs:
       RUN_ID: ${{ github.event.workflow_run.id }}
       COMMENT_PR: ${{ github.event.issue.number }}
       COMMENT_BODY: ${{ github.event.comment.body }}
+      COMMENTER: ${{ github.event.comment.user.login }}
     steps:
-      - uses: actions/checkout@v5
+      - name: Vérifier le droit d'écriture de l'auteur du commentaire
+        if: github.event_name == 'issue_comment'
+        run: |
+          permission=$(gh api "repos/$REPO/collaborators/$COMMENTER/permission" --jq .permission || echo none)
+          case "$permission" in
+            admin|maintain|write) ;;
+            *) echo "::error::$COMMENTER n'a pas le droit d'écriture; /agent fix ignoré."; exit 1 ;;
+          esac
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           sparse-checkout: scripts/agent
@@ -109,7 +118,7 @@ jobs:
           fi
           ls -la .agent
       - if: steps.attempt.outputs.proceed == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fix-context
           path: .agent/
@@ -124,29 +133,32 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      id-token: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.context.outputs.head_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: fix-context
           path: .agent
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - name: Correction par Claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1
         with:
+          # Either a Console API key or a subscription token from `claude setup-token` (Pro/Max).
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           prompt: Lis scripts/agent/fix.prompt.md et suis exactement ses consignes.
           claude_args: >-
             --max-turns 60
-            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm ci),Bash(npm test:*),Bash(npm run:*),Bash(npx vitest:*),Bash(npx tsc:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(ls:*)"
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm ci),Bash(npm test:*),Bash(npm run:*),Bash(npx vitest:*),Bash(npx tsc:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(ls:*)"
             ${{ vars.AGENT_MODEL && format('--model {0}', vars.AGENT_MODEL) || '' }}
       - name: Exporter le patch
         env:
@@ -160,7 +172,7 @@ jobs:
             echo "::error::L'agent n'a rien changé; voir son rapport dans les artefacts."
             exit 1
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: proposal
           path: ${{ runner.temp }}/out/
@@ -177,12 +189,12 @@ jobs:
       verdict: ${{ steps.guard.outputs.verdict }}
       comment: ${{ steps.guard.outputs.comment }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.context.outputs.head_sha }}
           persist-credentials: false
           sparse-checkout: scripts/agent
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: proposal
           path: ${{ runner.temp }}/proposal
@@ -217,15 +229,21 @@ jobs:
       ATTEMPT: ${{ needs.context.outputs.attempt }}
     steps:
       - id: app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.AGENT_APP_ID }}
           private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.context.outputs.branch }}
           token: ${{ steps.app.outputs.token }}
-      - uses: actions/download-artifact@v4
+      - name: Scripts de confiance (branche par défaut)
+        uses: actions/checkout@v7
+        with:
+          path: trusted
+          sparse-checkout: scripts/agent
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
         with:
           name: proposal
           path: ${{ runner.temp }}/proposal
@@ -239,7 +257,7 @@ jobs:
           git -c user.name='peopleflow-agent[bot]' -c user.email='peopleflow-agent[bot]@users.noreply.github.com' \
             commit -q -m "fix: correction automatique $ATTEMPT/2" -m "$summary"
           git push origin "HEAD:$BRANCH"
-          node scripts/agent/cli.mjs report "$RUNNER_TEMP/proposal/report.json" > /dev/null
+          node trusted/scripts/agent/cli.mjs report "$RUNNER_TEMP/proposal/report.json" > /dev/null
           gh pr comment "$PR" --body-file "$RUNNER_TEMP/proposal/report.md"
 
   stopped:

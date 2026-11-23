@@ -2,7 +2,9 @@ import { expect, test } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('status').filter({ hasText: 'Chargement' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Utiliser ce compte' }).click()
+  await page.getByRole('button', { name: 'Se connecter' }).click()
+  await expect(page.getByRole('heading', { name: /Vue d.ensemble/ })).toBeVisible()
 })
 
 async function openDirectory(page: import('@playwright/test').Page) {

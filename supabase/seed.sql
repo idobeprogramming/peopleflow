@@ -115,3 +115,20 @@ on conflict (id) do update set
   status = excluded.status,
   sort_order = excluded.sort_order,
   updated_at = now();
+
+-- Fictional demo account (password shown on the login page when DEMO_ACCOUNT=true).
+-- scrypt N=2^17, r=8, p=1 hash; see apps/api/src/auth/demo-account.ts.
+insert into public.app_users (id, email, password_hash, display_name, role)
+values (
+  '30000000-0000-4000-8000-000000000001',
+  'camille.fortin@example.test',
+  'scrypt$131072$8$1$CDrUOg0-8RkPT9a4crqVCA$-Rz5tZka5q3SSN9C-VCCMOfk3P0CLVXahM4M6_FyMYs',
+  'Camille Fortin',
+  'admin'
+)
+on conflict (id) do update set
+  email = excluded.email,
+  password_hash = excluded.password_hash,
+  display_name = excluded.display_name,
+  role = excluded.role,
+  updated_at = now();
