@@ -22,8 +22,8 @@ npm run dev:local
 ```
 
 L’interface sera disponible sur `http://localhost:5173` et l’API sur
-`http://localhost:3000`. La commande applique les migrations en attente, vérifie les tables
-et transmet la clé locale au processus serveur. Pour une démo en mémoire,
+`http://localhost:3000`. La commande applique les migrations en attente, vérifie les tables,
+crée le compte de démonstration s’il manque et transmet la clé locale au processus serveur. Pour une démo en mémoire,
 utilisez `npm run dev` avec les variables Supabase absentes (et `DEMO_ACCOUNT=true` dans
 `.env` pour afficher le compte de démo).
 
