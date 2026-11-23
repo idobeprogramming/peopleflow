@@ -102,10 +102,10 @@ try {
   Write-Host "  staging créée depuis main ($($main.object.sha.Substring(0, 7)))."
 }
 
-function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear, [bool]$UpToDate, [int]$Approvals) {
+function Protect([string]$Branch, [bool]$EnforceAdmins, [bool]$Linear, [bool]$UpToDate, [int]$Approvals, [string[]]$Checks = $RequiredChecks) {
   try {
   Invoke-GitHub PUT "$api/branches/$Branch/protection" @{
-    required_status_checks = @{ strict = $UpToDate; contexts = $RequiredChecks }
+    required_status_checks = @{ strict = $UpToDate; contexts = $Checks }
     enforce_admins = $EnforceAdmins
     required_pull_request_reviews = @{
       dismiss_stale_reviews = $true; require_code_owner_reviews = ($Approvals -gt 0); required_approving_review_count = $Approvals
@@ -131,7 +131,8 @@ Step 'Protection des branches'
 Protect 'main' $true $false $false 1
 # staging: PR and green checks, squash only, no approval (a solo owner cannot approve their own
 # PRs) and no admin bypass either. Agent PRs never auto-merge: a person's merge is the review.
-Protect 'staging' $true $true $true 0
+# The review verdict blocks agent PRs; GitHub counts the job as passed on other PRs, where it is skipped.
+Protect 'staging' $true $true $true 0 ($RequiredChecks + 'Verdict de la revue')
 
 Step 'Environnements staging et production'
 $me = Invoke-RestMethod -Uri 'https://api.github.com/user' -Headers $headers

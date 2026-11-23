@@ -1,0 +1,84 @@
+# Decides who acts next on an agent issue, then starts the agent workflow when it is Claude's turn.
+# Nothing here runs Claude. The rules live in scripts/agent/flow.mjs and router.mjs (tested).
+#   - `agent:ready` (write access): first authorization.
+#   - a reply on a `needs-info` issue, `/agent update` on an issue or PR, `/agent fix` on a PR.
+#   - the end of a CI, review or agent run: correction, single retry, question, hand-off or demo merge.
+name: Événements de l'agent
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  workflow_run:
+    workflows: [CI, Revue IA, Agent d'issue]
+    types: [completed]
+  # Explicit signal from a failed agent run: GitHub may not emit workflow_run for a run that was
+  # itself started with the workflow token. Both signals are handled once (router.mjs).
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Run de l'agent en échec à router
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: agent-events-${{ github.event.workflow_run.id || inputs.run_id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  route:
+    name: Routage
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'issues'
+        && github.event.label.name == 'agent:ready'
+        && github.event.issue.pull_request == null)
+      || (github.event_name == 'issue_comment'
+        && github.event.comment.user.type != 'Bot'
+        && (startsWith(github.event.comment.body, '/agent ')
+          || (github.event.issue.pull_request == null
+            && contains(github.event.issue.labels.*.name, 'needs-info'))))
+      || (github.event_name == 'workflow_run'
+        && github.event.workflow.name == 'Agent d''issue'
+        && github.event.workflow_run.event == 'workflow_dispatch'
+        && github.event.workflow_run.conclusion != 'success')
+      || (github.event_name == 'workflow_run'
+        && github.event.workflow_run.event == 'pull_request'
+        && startsWith(github.event.workflow_run.head_branch, 'agent/issue-')
+        && github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: scripts/agent
+      # Only a demo merge uses the App token.
+      - id: app
+        if: >-
+          github.event_name == 'workflow_run'
+          && startsWith(github.event.workflow_run.head_branch, 'agent/issue-')
+          && vars.AGENT_APP_ID != ''
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.AGENT_APP_ID }}
+          private-key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
+      - name: Décider de la suite
+        run: node scripts/agent/cli.mjs event
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          AGENT_MAINTAINER: ${{ vars.AGENT_MAINTAINER }}
+          AGENT_BASE_BRANCH: ${{ vars.AGENT_BASE_BRANCH }}
+          DEMO_AUTO_MERGE: ${{ vars.DEMO_AUTO_MERGE }}
