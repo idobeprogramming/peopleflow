@@ -1,13 +1,17 @@
 import type { CreateEmployeeInput } from '../../../../packages/domain/src/types.js'
-import { filterEmployees } from '../../../../packages/domain/src/directory.js'
+import type { EmployeeFilters } from '../../../../packages/domain/src/types.js'
 import type { EmployeeRepository } from './repository.js'
 import { EmployeeError } from './error.js'
 
 export class EmployeeService {
   constructor(private readonly repository: EmployeeRepository) {}
 
-  async list(query: string, departmentId?: string, status?: string) {
-    return filterEmployees(await this.repository.listEmployees(), query, departmentId, status)
+  list(filters: EmployeeFilters) {
+    return this.repository.listEmployees(filters)
+  }
+
+  page(filters: EmployeeFilters, offset: number, size: number) {
+    return this.repository.directoryPage(filters, offset, size)
   }
 
   async get(id: string) {

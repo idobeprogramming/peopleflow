@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { LogOut, RefreshCw } from 'lucide-react'
-import type { Activity, AuthUser, Department, Employee, OnboardingTask, UserRole } from '../../../packages/domain/src/types.js'
+import type { Activity, AuthUser, Department, DepartmentReport, Employee, OnboardingTask, UserRole } from '../../../packages/domain/src/types.js'
 import {
-  UNAUTHORIZED_EVENT, getCurrentUser, listActivity, listDepartments, listEmployees, listOnboardingTasks, logout,
+  UNAUTHORIZED_EVENT, getDepartmentReport, getCurrentUser, listActivity, listDepartments, listEmployees, listOnboardingTasks, logout,
 } from './api.js'
 import { CreateEmployeeDialog } from './components/CreateEmployeeDialog.js'
 import { Dashboard } from './components/Dashboard.js'
@@ -12,7 +12,21 @@ import { LoginPage } from './components/LoginPage.js'
 import { Onboarding } from './components/Onboarding.js'
 import { Sidebar, type Page } from './components/Sidebar.js'
 
-function Reports({ employees, departments }: { employees: Employee[]; departments: Department[] }) {
+function Reports() {
+  const [rows, setRows] = useState<DepartmentReport[]>([])
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [retry, setRetry] = useState(0)
+  useEffect(() => {
+    let active = true
+    setState('loading')
+    getDepartmentReport().then((result) => {
+      if (active) { setRows(result); setState('ready') }
+    }).catch(() => { if (active) setState('error') })
+    return () => { active = false }
+  }, [retry])
+  if (state === 'loading') return <p role="status">Chargement du rapport…</p>
+  if (state === 'error') return <p role="alert">Rapport indisponible. <button onClick={() => setRetry(retry + 1)}>Réessayer</button></p>
+  const total = rows.reduce((sum, department) => sum + department.total, 0)
   return (
     <div className="page-stack">
       <section className="page-heading">
@@ -20,19 +34,17 @@ function Reports({ employees, departments }: { employees: Employee[]; department
       </section>
       <section className="panel reports-panel">
         <div className="panel-heading"><div><div className="panel-kicker">EFFECTIF PAR DÉPARTEMENT</div><h2>Composition de l’équipe</h2></div></div>
-        {departments.map((department) => {
-          const members = employees.filter((employee) => employee.departmentId === department.id)
-          const active = members.filter((employee) => employee.status === 'active').length
+        {rows.map((department) => {
           return (
             <div className="report-row" key={department.id}>
               <span className="report-department">{department.name}</span>
-              <span className="report-bar"><span style={{ width: `${employees.length ? (members.length / employees.length) * 100 : 0}%` }} /></span>
-              <strong>{members.length}</strong>
-              <small>{active} actifs</small>
+              <span className="report-bar"><span style={{ width: `${total ? (department.total / total) * 100 : 0}%` }} /></span>
+              <strong>{department.total}</strong>
+              <small>{department.active} actifs</small>
             </div>
           )
         })}
-        <div className="report-total"><span>Effectif total</span><strong>{employees.length}</strong></div>
+        <div className="report-total"><span>Effectif total</span><strong>{total}</strong></div>
       </section>
     </div>
   )
@@ -55,18 +67,34 @@ export function App() {
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, signedOut)
   }, [])
 
+  const [signOutState, setSignOutState] = useState<'idle' | 'pending' | 'failed'>('idle')
+  async function signOut() {
+    setSignOutState('pending')
+    try {
+      await logout()
+      setUser(null)
+      setSignOutState('idle')
+    } catch {
+      setSignOutState('failed')
+    }
+  }
+
   if (user === undefined) {
     return <div className="loading-state" role="status"><span className="loading-spinner" />Vérification de la session…</div>
   }
-  if (!user) return <LoginPage onSignedIn={setUser} />
-  return <Workspace user={user} onSignOut={() => void logout().finally(() => setUser(null))} />
+  if (!user) return <LoginPage onSignedIn={(signedIn) => { setSignOutState('idle'); setUser(signedIn) }} />
+  return <Workspace user={user} onSignOut={() => void signOut()} signOutState={signOutState} />
 }
 
 function initials(name: string) {
   return name.split(/\s+/).map((part) => part[0] ?? '').join('').slice(0, 2).toUpperCase()
 }
 
-function Workspace({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
+function Workspace({ user, onSignOut, signOutState }: {
+  user: AuthUser
+  onSignOut: () => void
+  signOutState: 'idle' | 'pending' | 'failed'
+}) {
   const [page, setPage] = useState<Page>('overview')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -125,12 +153,13 @@ function Workspace({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
               <span className="avatar avatar-small avatar-coral">{initials(user.displayName)}</span>
               <span className="topbar-user-copy"><strong>{user.displayName}</strong><small>{roleLabels[user.role]}</small></span>
             </div>
-            <button className="topbar-logout" type="button" aria-label="Se déconnecter" title="Se déconnecter" onClick={onSignOut}>
+            <button className="topbar-logout" type="button" aria-label="Se déconnecter" title="Se déconnecter" disabled={signOutState === 'pending'} onClick={onSignOut}>
               <LogOut size={17} aria-hidden="true" />
             </button>
           </div>
         </header>
 
+        {signOutState === 'failed' && <p role="alert">La déconnexion a échoué. Réessayez avec le bouton Se déconnecter.</p>}
         <div className="page-content">
           {loading ? (
             <div className="loading-state" role="status"><span className="loading-spinner" />Chargement de votre espace RH…</div>
@@ -150,7 +179,6 @@ function Workspace({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
             />
           ) : page === 'employees' ? (
             <EmployeeDirectory
-              employees={employees}
               departments={departments}
               onSelectEmployee={setSelectedEmployee}
               onAddEmployee={() => setShowCreateDialog(true)}
@@ -161,7 +189,7 @@ function Workspace({ user, onSignOut }: { user: AuthUser; onSignOut: () => void 
               void listActivity().then(setActivity).catch(() => setToast("Actualisation du journal impossible."))
             }} employees={employees} tasks={tasks} onSelectEmployee={setSelectedEmployee} />
           ) : (
-            <Reports employees={employees} departments={departments} />
+            <Reports />
           )}
         </div>
       </main>

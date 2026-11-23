@@ -1,4 +1,5 @@
 import type {
+  DepartmentReport, EmployeeFilters, EmployeePage,
   Activity,
   AuthUser,
   Department,
@@ -51,11 +52,24 @@ export async function login(email: string, password: string): Promise<AuthUser> 
 }
 
 export async function logout(): Promise<void> {
-  await fetch('/api/auth/logout', { method: 'POST' })
+  const response = await fetch('/api/auth/logout', { method: 'POST' })
+  if (!response.ok && response.status !== 401) throw new Error('Déconnexion impossible.')
 }
 
 export function listEmployees(): Promise<Employee[]> {
   return getJson('/api/employees')
+}
+
+export function searchEmployees(filters: EmployeeFilters, offset: number, limit: number): Promise<EmployeePage> {
+  const params = new URLSearchParams({ offset: String(offset), limit: String(limit) })
+  if (filters.query) params.set('q', filters.query)
+  if (filters.departmentId) params.set('departmentId', filters.departmentId)
+  if (filters.status) params.set('status', filters.status)
+  return getJson('/api/employees?' + params)
+}
+
+export function getDepartmentReport(): Promise<DepartmentReport[]> {
+  return getJson('/api/reports/departments')
 }
 
 export function listDepartments(): Promise<Department[]> {

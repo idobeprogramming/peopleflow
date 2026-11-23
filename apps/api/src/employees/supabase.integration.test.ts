@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { createSupabaseEmployeeRepository } from './supabase-repository.js'
 
@@ -45,6 +46,59 @@ describe.skipIf(!isLocal || !key)('Supabase repository against the seeded local 
     })
     expect(created).toMatchObject({ email, departmentName: department!.name })
     expect(await repository.getEmployee(created.id)).toMatchObject({ email })
+  })
+
+  it('allows exactly one of two concurrent reciprocal manager assignments', async () => {
+    const db = createClient(url!, key!)
+    const [department] = await repository.listDepartments()
+    const input = {
+      firstName: 'Concurrent', lastName: 'Test', jobTitle: 'Test', departmentId: department!.id,
+      status: 'active' as const, employmentType: 'contract' as const,
+      hireDate: '2026-01-01', location: 'Test',
+    }
+    const a = await repository.createEmployee({ ...input, email: crypto.randomUUID() + '@example.test' })
+    const b = await repository.createEmployee({ ...input, email: crypto.randomUUID() + '@example.test' })
+    try {
+      const results = await Promise.allSettled([
+        repository.updateEmployee(a.id, { ...a, managerId: b.id }),
+        repository.updateEmployee(b.id, { ...b, managerId: a.id }),
+      ])
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+      expect(results.find((r) => r.status === 'rejected')).toMatchObject({ reason: { kind: 'invalid' } })
+      const after = await Promise.all([repository.getEmployee(a.id), repository.getEmployee(b.id)])
+      expect(after.map((employee) => employee?.managerId).filter(Boolean)).toHaveLength(1)
+    } finally {
+      const { error } = await db.from('employees').delete().in('id', [a.id, b.id])
+      if (error) throw error
+    }
+  })
+
+  it('pages, searches and counts a department with more than 1000 employees', async () => {
+    const db = createClient(url!, key!)
+    const departmentId = crypto.randomUUID()
+    const { error } = await db.from('departments').insert({ id: departmentId, name: departmentId })
+    if (error) throw error
+    try {
+      const rows = Array.from({ length: 1001 }, (_, i) => ({
+        department_id: departmentId, first_name: 'Test', last_name: String(i).padStart(4, '0'),
+        email: departmentId + i + '@example.test', job_title: 'Test', hire_date: '2026-01-01',
+        status: i === 1000 ? 'leave' : 'active', employment_type: 'contract', location: 'Test',
+      }))
+      const inserted = await db.from('employees').insert(rows)
+      if (inserted.error) throw inserted.error
+      const last = await repository.directoryPage({ departmentId }, 1000, 50)
+      expect(last.total).toBe(1001)
+      expect(last.items.map((employee) => employee.lastName)).toEqual(['1000'])
+      const result = await repository.directoryPage({ departmentId, query: 'TEST 1000', status: 'leave' }, 0, 50)
+      expect(result.items).toEqual(last.items)
+      expect((await repository.departmentReport()).find((row) => row.id === departmentId))
+        .toMatchObject({ total: 1001, active: 1000 })
+    } finally {
+      const employees = await db.from('employees').delete().eq('department_id', departmentId)
+      if (employees.error) throw employees.error
+      const department = await db.from('departments').delete().eq('id', departmentId)
+      if (department.error) throw department.error
+    }
   })
 
   it('persists an onboarding task status and records it in the activity log', async () => {

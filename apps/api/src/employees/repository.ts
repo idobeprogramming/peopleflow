@@ -1,4 +1,5 @@
 import type {
+  EmployeeFilters, EmployeePage, DepartmentReport,
   Activity,
   Department,
   CreateEmployeeInput,
@@ -16,7 +17,9 @@ export interface EmployeeSaveChecks {
 
 export interface EmployeeRepository {
   checkEmployeeSave(input: CreateEmployeeInput, id?: string): Promise<EmployeeSaveChecks>
-  listEmployees(): Promise<Employee[]>
+  directoryPage(filters: EmployeeFilters, offset: number, size: number): Promise<EmployeePage>
+  departmentReport(): Promise<DepartmentReport[]>
+  listEmployees(filters?: EmployeeFilters): Promise<Employee[]>
   getEmployee(id: string): Promise<Employee | null>
   listDepartments(): Promise<Department[]>
   listOnboardingTasks(employeeId?: string): Promise<OnboardingTask[]>
