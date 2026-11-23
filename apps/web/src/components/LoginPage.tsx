@@ -40,6 +40,9 @@ export function LoginPage({ onSignedIn }: LoginPageProps) {
           <div>
             <h1 id="login-title">Connexion à PeopleFlow</h1>
             <p>Accédez à votre espace RH.</p>
+            {demoAccount && (
+              <p>PeopleFlow est une application de démonstration de gestion d'employés : annuaire, fiches et accueil des nouveaux arrivants. Toutes les données sont fictives.</p>
+            )}
           </div>
         </div>
 
