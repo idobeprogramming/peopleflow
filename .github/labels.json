@@ -3,8 +3,6 @@
   { "name": "agent:working", "color": "fbca04", "description": "L'agent travaille sur cette demande" },
   { "name": "agent:review", "color": "1d76db", "description": "PR prête pour revue humaine" },
   { "name": "agent:failed", "color": "b60205", "description": "L'agent a échoué; voir le dernier commentaire" },
-  { "name": "agent:attempt-1", "color": "c5def5", "description": "Première correction automatique utilisée" },
-  { "name": "agent:attempt-2", "color": "c5def5", "description": "Deuxième correction automatique utilisée" },
   { "name": "needs-info", "color": "d876e3", "description": "L'agent attend des précisions" },
   { "name": "needs-human", "color": "e99695", "description": "Décision humaine requise" },
   { "name": "migration", "color": "5319e7", "description": "La demande autorise un changement de schéma ou de seed" },

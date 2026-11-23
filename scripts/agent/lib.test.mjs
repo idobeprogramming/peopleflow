@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   renderIssue, selectDiscussion,
-  checkDiff, decideTriage, nextAttempt, parseUnifiedDiff, renderDailyReport, renderReport, renderTriageComment,
+  checkDiff, decideTriage, parseUnifiedDiff, renderDailyReport, renderReport, renderTriageComment,
 } from './lib.mjs'
 
 const diff = (path, { added = [], removed = [], isNew = false } = {}) => [
@@ -137,12 +137,6 @@ test('le triage s’arrête sur un changement de schéma non autorisé', () => {
 test('un triage illisible échoue proprement', () => {
   assert.equal(decideTriage('pas du json').action, 'fail')
   assert.equal(decideTriage({ ready: true }).action, 'fail')
-})
-
-test('le compteur de tentatives s’arrête après deux corrections', () => {
-  assert.equal(nextAttempt([]), 1)
-  assert.equal(nextAttempt(['agent:attempt-1']), 2)
-  assert.equal(nextAttempt(['agent:attempt-1', 'agent:attempt-2']), null)
 })
 
 test('le rapport montre les commandes et ferme l’issue', () => {

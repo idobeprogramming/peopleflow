@@ -1,7 +1,7 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["title", "summary", "changes", "tests", "commands", "assumptions", "openQuestions"],
+  "required": ["title", "summary", "changes", "tests", "commands", "assumptions", "openQuestions", "questions"],
   "properties": {
     "title": { "type": "string" },
     "summary": { "type": "string" },
@@ -17,6 +17,7 @@
       }
     },
     "assumptions": { "type": "array", "items": { "type": "string" } },
-    "openQuestions": { "type": "array", "items": { "type": "string" } }
+    "openQuestions": { "type": "array", "items": { "type": "string" } },
+    "questions": { "type": "array", "items": { "type": "string" } }
   }
 }

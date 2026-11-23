@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 // Thin I/O layer over lib.mjs for GitHub Actions. Usage: node scripts/agent/cli.mjs <command> [...args]
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { cleanLog, decideReview, issueFromBranch, renderReview } from './flow.mjs'
+import { createGitHub } from './github.mjs'
 import {
-  renderIssue, selectDiscussion,
-  checkDiff, decideTriage, nextAttempt, parseUnifiedDiff, renderDailyReport, renderGuardComment, renderReport,
-  renderTriageComment,
+  checkDiff, decideTriage, parseUnifiedDiff, renderDailyReport, renderGuardComment, renderIssue, renderReport,
+  renderTriageComment, selectDiscussion,
 } from './lib.mjs'
+import {
+  askAuthor, checkFresh, loadContext, onComment, onLabel, onPublished, onRun, prepareRun, renderChanges, stopForMaintainer,
+} from './router.mjs'
 
 const [command, ...args] = process.argv.slice(2)
 
@@ -27,27 +31,104 @@ function readJson(path) {
 }
 
 const commands = {
-  // Writes the issue and its trusted discussion as an untrusted data file the agent reads,
-  // instead of interpolating them into YAML. Optional inputs: <outDir>/comments.json (the
-  // issue's comments) and <outDir>/trusted.json (commenters with write access).
-  'write-issue'([outDir = '.agent']) {
+  // agent-events.yml: decides what the event means, then dispatches the agent workflow.
+  async event() {
+    const api = createGitHub()
     const event = readJson(process.env.GITHUB_EVENT_PATH)
-    const issue = event.issue
-    mkdirSync(outDir, { recursive: true })
-    const optional = (path) => {
-      try {
-        return readJson(path)
-      } catch {
-        return []
-      }
+    const handlers = {
+      issues: () => onLabel(api, event),
+      issue_comment: () => onComment(api, event),
+      workflow_dispatch: async () => onRun(api, await api.finishedAgentRun(process.env.RUN_ID)),
+      workflow_run: () => onRun(api, { ...event.workflow_run, name: event.workflow.name }),
     }
-    const discussion = selectDiscussion(optional(`${outDir}/comments.json`), {
-      issueAuthor: issue.user?.login, trusted: optional(`${outDir}/trusted.json`),
+    summary(`Routage : ${await handlers[process.env.GITHUB_EVENT_NAME]()}`)
+  },
+
+  // First job of a run. Writes the data files Claude reads; never interpolates them into YAML.
+  async prepare([outDir = '.agent']) {
+    const api = createGitHub()
+    const env = process.env
+    const number = Number(env.ISSUE)
+    if (!Number.isInteger(number) || number < 1) throw new Error(`Numéro d’issue invalide : ${env.ISSUE}`)
+    const missing = []
+    if (env.HAS_CLAUDE !== 'true') missing.push('le secret CLAUDE_CODE_OAUTH_TOKEN (abonnement) ou ANTHROPIC_API_KEY (API)')
+    if (env.HAS_APP !== 'true') missing.push('la variable AGENT_APP_ID et le secret AGENT_APP_PRIVATE_KEY (GitHub App)')
+    const run = await prepareRun(api, {
+      number, mode: env.MODE, runId: env.GITHUB_RUN_ID, seedRun: env.SEED_RUN, headSha: env.HEAD_SHA, missing,
     })
-    writeFileSync(`${outDir}/issue.md`, renderIssue(issue, discussion))
-    output('labels', JSON.stringify((issue.labels ?? []).map((label) => label.name)))
-    output('number', issue.number)
-    summary(`Discussion : ${discussion.kept.length} commentaire(s) lu(s), ${discussion.ignored} ignoré(s).`)
+    output('path', run.path)
+    if (run.path === 'stop') return summary(`Arrêt : ${run.reason}`)
+    const { context } = run
+    mkdirSync(outDir, { recursive: true })
+    // Prompts come from the default branch, whatever the age of the branch being worked on.
+    const here = new URL('./', import.meta.url)
+    for (const file of readdirSync(here).filter((name) => /\.(prompt\.md|schema\.json)$/.test(name))) {
+      copyFileSync(new URL(file, here), `${outDir}/${file}`)
+    }
+    const write = (name, text) => text && writeFileSync(`${outDir}/${name}`, text)
+    write('issue.md', renderIssue(context.issue, selectDiscussion(context.comments, {
+      issueAuthor: context.issue.user.login, trusted: context.trusted,
+    })))
+    write('changes.md', renderChanges(context, run.previous))
+    if (env.LOG_RUN) write('failure.log', cleanLog(await api.log(env.LOG_RUN)).split('\n').slice(-400).join('\n'))
+    if (env.SEED_RUN) write('previous.patch', api.artifact(env.SEED_RUN, 'proposal', 'proposal.patch'))
+    if (env.REVIEW_RUN) write('review.json', api.artifact(env.REVIEW_RUN, 'review-verdict', 'verdict.json'))
+    output('base_branch', run.baseBranch)
+    output('base_sha', run.baseSha)
+    output('pr', run.pull?.number ?? '')
+    output('branch', run.pull?.head.ref ?? '')
+    output('labels', JSON.stringify(context.issue.labels.map((label) => label.name)))
+    output('title', context.issue.title)
+  },
+
+  async ask([file]) {
+    const { questions = [], summary: text = '' } = readJson(file)
+    summary(`Question à l’auteur : ${await askAuthor(createGitHub(), { number: Number(process.env.ISSUE), questions, summary: text })}`)
+  },
+
+  async stop() {
+    const api = createGitHub()
+    await stopForMaintainer(api, {
+      number: Number(process.env.ISSUE), reason: process.env.REASON, url: api.runUrl(process.env.GITHUB_RUN_ID),
+    })
+  },
+
+  async fresh() {
+    const action = await checkFresh(createGitHub(), { number: Number(process.env.ISSUE), runId: process.env.GITHUB_RUN_ID })
+    output('action', action)
+    summary(`Avant publication : ${action}`)
+  },
+
+  async published([reportFile]) {
+    await onPublished(createGitHub(), {
+      number: Number(process.env.ISSUE), pull: Number(process.env.PR), summary: String(readJson(reportFile).summary ?? '').slice(0, 500),
+    })
+  },
+
+  // Data files for the reviewer: the linked issue with its discussion.
+  async 'review-context'([outDir = '.agent']) {
+    const context = await loadContext(createGitHub(), issueFromBranch(process.env.HEAD_REF))
+    mkdirSync(outDir, { recursive: true })
+    writeFileSync(`${outDir}/issue.md`, renderIssue(context.issue, selectDiscussion(context.comments, {
+      issueAuthor: context.issue.user.login, trusted: context.trusted,
+    })))
+  },
+
+  // Publishes the verdict and fails unless the PR conforms: this job is the merge gate.
+  async 'review-verdict'([rawFile, diffFile, outFile]) {
+    let raw = ''
+    try {
+      raw = readFileSync(rawFile, 'utf8')
+    } catch {
+      // No decision written: decideReview reports an unreadable verdict.
+    }
+    const guard = checkDiff(parseUnifiedDiff(readFileSync(diffFile, 'utf8')))
+    const weakenedTests = guard.human.filter((item) => item.rule === 'weakened-test').map((item) => item.message)
+    const decision = decideReview(raw, { weakenedTests })
+    writeFileSync(outFile, JSON.stringify(decision))
+    summary(renderReview(decision))
+    await createGitHub().comment(Number(process.env.PR), renderReview(decision))
+    if (decision.verdict !== 'pass') process.exitCode = 1
   },
 
   triage([file, labelsJson = '[]']) {
@@ -60,12 +141,14 @@ const commands = {
     const decision = decideTriage(raw, { labels: JSON.parse(labelsJson) })
     output('action', decision.action)
     if (decision.action === 'fail') {
-      output('comment', `### ⚠️ Triage impossible\n\n${decision.reason}`)
+      output('reason', `triage impossible. ${decision.reason}`)
       summary(`Triage : échec — ${decision.reason}`)
       return
     }
     const comment = renderTriageComment(decision)
     output('comment', comment)
+    output('reason', decision.reason ?? '')
+    writeFileSync(file.replace(/\.json$/, '') + '.questions.json', JSON.stringify({ questions: decision.triage.questions }))
     writeFileSync(file.replace(/\.json$/, '') + '.plan.md', comment)
     summary(comment)
   },
@@ -94,11 +177,6 @@ const commands = {
     summary(body)
   },
 
-  attempt([labelsJson = '[]']) {
-    const attempt = nextAttempt(JSON.parse(labelsJson))
-    output('attempt', attempt ?? 'exhausted')
-  },
-
   // Collects the day's activity with the gh CLI and prints the markdown report.
   daily([date = new Date().toISOString().slice(0, 10), outFile]) {
     const gh = (...ghArgs) => JSON.parse(execFileSync('gh', ghArgs, { encoding: 'utf8' }) || '[]')
@@ -120,4 +198,4 @@ if (!commands[command]) {
   console.error(`Commande inconnue : ${command}. Disponibles : ${Object.keys(commands).join(', ')}`)
   process.exit(2)
 }
-commands[command](args)
+await commands[command](args)
