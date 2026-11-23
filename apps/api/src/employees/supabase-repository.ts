@@ -1,3 +1,4 @@
+import { EmployeeError } from './error.js'
 import { createClient } from '@supabase/supabase-js'
 import type {
   CreateEmployeeInput,
@@ -8,9 +9,9 @@ import type {
   OnboardingTask,
   OnboardingTaskStatus,
 } from '../../../../packages/domain/src/types.js'
-import type { EmployeeRepository } from './repository.js'
+import type { EmployeeRepository, EmployeeSaveChecks } from './repository.js'
 
-interface EmployeeRow {
+interface EmployeeProfileRow {
   id: string
   first_name: string
   last_name: string
@@ -23,6 +24,8 @@ interface EmployeeRow {
   hire_date: string
   location: string
   created_at: string
+  department_name: string
+  manager_name: string | null
 }
 
 interface DepartmentRow {
@@ -62,44 +65,23 @@ export function createSupabaseEmployeeRepository(
     }))
   }
 
-  async function fetchEmployeeRows(): Promise<EmployeeRow[]> {
-    const { data, error } = await client
-      .from('employees')
-      .select(
-        'id, first_name, last_name, email, job_title, department_id, manager_id, status, employment_type, hire_date, location, created_at',
-      )
-      .order('last_name')
-
-    if (error) throw new Error(`Could not load employees: ${error.message}`)
-
-    return (data ?? []) as EmployeeRow[]
-  }
-
-  async function mapEmployees(rows: EmployeeRow[]): Promise<Employee[]> {
-    const departmentList = await fetchDepartments()
-    const departmentNames = new Map(
-      departmentList.map((department) => [department.id, department.name]),
-    )
-    const employeeNames = new Map(
-      rows.map((row) => [row.id, `${row.first_name} ${row.last_name}`]),
-    )
-
-    return rows.map((row) => ({
+  function mapEmployee(row: EmployeeProfileRow): Employee {
+    return {
       id: row.id,
       firstName: row.first_name,
       lastName: row.last_name,
       email: row.email,
       jobTitle: row.job_title,
       departmentId: row.department_id,
-      departmentName: departmentNames.get(row.department_id) ?? 'Sans département',
+      departmentName: row.department_name,
       managerId: row.manager_id,
-      managerName: row.manager_id ? employeeNames.get(row.manager_id) ?? null : null,
+      managerName: row.manager_name,
       status: row.status,
       employmentType: row.employment_type,
       hireDate: row.hire_date,
       location: row.location,
       createdAt: row.created_at,
-    }))
+    }
   }
 
   function employeeValues(input: CreateEmployeeInput) {
@@ -117,6 +99,26 @@ export function createSupabaseEmployeeRepository(
     }
   }
 
+  async function getEmployee(id: string) {
+    const { data, error } = await client.from('employee_profiles').select('*').eq('id', id).maybeSingle()
+    if (error?.code === '22P02') return null
+    if (error) throw error
+    return data ? mapEmployee(data as EmployeeProfileRow) : null
+  }
+
+  async function loadWrittenEmployee(id: string) {
+    const employee = await getEmployee(id)
+    if (!employee) throw new EmployeeError('notFound', 'Employé introuvable.')
+    return employee
+  }
+
+  function throwWriteError(error: { code: string; message: string }): never {
+    if (error.code === '23505' && error.message.includes('employees_email_key')) {
+      throw new EmployeeError('conflict', 'Cette adresse courriel est déjà utilisée.')
+    }
+    throw error
+  }
+
   return {
     async listActivity() {
       const { data, error } = await client.from('audit_events')
@@ -130,21 +132,28 @@ export function createSupabaseEmployeeRepository(
       if (error) throw error
       return data as OnboardingTask | null
     },
-    async updateEmployee(id, input) {
-      const { error } = await client.from('employees').update(employeeValues(input)).eq('id', id)
+    async checkEmployeeSave(input, id) {
+      const { data, error } = await client.rpc('check_employee_save', {
+        employee_id: id ?? null, department_id: input.departmentId,
+        manager_id: input.managerId ?? null, employee_email: input.email,
+      }).single<EmployeeSaveChecks>()
+      if (error?.code === '22P02' && id) throw new EmployeeError('notFound', 'Employé introuvable.')
       if (error) throw error
-      const employee = await this.getEmployee(id)
-      if (!employee) throw new Error('Employé introuvable.')
-      return employee
+      return data
+    },
+    async updateEmployee(id, input) {
+      const { data, error } = await client.from('employees').update(employeeValues(input))
+        .eq('id', id).select('id').maybeSingle()
+      if (error) throwWriteError(error)
+      if (!data) throw new EmployeeError('notFound', 'Employé introuvable.')
+      return loadWrittenEmployee(data.id)
     },
     async listEmployees() {
-      return mapEmployees(await fetchEmployeeRows())
+      const { data, error } = await client.from('employee_profiles').select('*').order('last_name')
+      if (error) throw error
+      return (data as EmployeeProfileRow[]).map(mapEmployee)
     },
-    async getEmployee(id) {
-      const rows = await fetchEmployeeRows()
-      const employee = (await mapEmployees(rows)).find((item) => item.id === id)
-      return employee ?? null
-    },
+    getEmployee,
     listDepartments: fetchDepartments,
     async listOnboardingTasks(employeeId) {
       let query = client
@@ -169,17 +178,9 @@ export function createSupabaseEmployeeRepository(
       }))
     },
     async createEmployee(input: CreateEmployeeInput) {
-      const { error } = await client.from('employees').insert(employeeValues(input))
-
-      if (error) throw new Error(`Could not create employee: ${error.message}`)
-
-      const employee = (await mapEmployees(await fetchEmployeeRows())).find(
-        (item) => item.email === input.email,
-      )
-
-      if (!employee) throw new Error('Created employee could not be reloaded.')
-
-      return employee
+      const { data, error } = await client.from('employees').insert(employeeValues(input)).select('id').single()
+      if (error) throwWriteError(error)
+      return loadWrittenEmployee(data.id)
     },
   }
 }

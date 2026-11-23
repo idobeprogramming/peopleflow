@@ -1,6 +1,7 @@
 import { Hono, type Handler } from 'hono'
 import { z } from 'zod'
-import { EmployeeError, type EmployeeService } from './service.js'
+import { EmployeeError } from './error.js'
+import type { EmployeeService } from './service.js'
 
 const employeeInputSchema = z.object({
   firstName: z.string().trim().min(1).max(60),

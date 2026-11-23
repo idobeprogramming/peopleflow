@@ -6,7 +6,16 @@ import type {
   OnboardingTask,
 } from '../../../../packages/domain/src/types.js'
 
+export interface EmployeeSaveChecks {
+  employeeExists: boolean
+  departmentExists: boolean
+  managerExists: boolean
+  managerCycle: boolean
+  emailTaken: boolean
+}
+
 export interface EmployeeRepository {
+  checkEmployeeSave(input: CreateEmployeeInput, id?: string): Promise<EmployeeSaveChecks>
   listEmployees(): Promise<Employee[]>
   getEmployee(id: string): Promise<Employee | null>
   listDepartments(): Promise<Department[]>

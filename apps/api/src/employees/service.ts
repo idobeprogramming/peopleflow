@@ -1,12 +1,7 @@
 import type { CreateEmployeeInput } from '../../../../packages/domain/src/types.js'
 import { filterEmployees } from '../../../../packages/domain/src/directory.js'
 import type { EmployeeRepository } from './repository.js'
-
-export class EmployeeError extends Error {
-  constructor(readonly kind: 'invalid' | 'notFound' | 'conflict', message: string) {
-    super(message)
-  }
-}
+import { EmployeeError } from './error.js'
 
 export class EmployeeService {
   constructor(private readonly repository: EmployeeRepository) {}
@@ -22,33 +17,20 @@ export class EmployeeService {
   }
 
   async save(input: CreateEmployeeInput, id?: string) {
-    const [employees, departments] = await Promise.all([
-      this.repository.listEmployees(),
-      this.repository.listDepartments(),
-    ])
-    if (id && !employees.some((employee) => employee.id === id)) {
+    const checks = await this.repository.checkEmployeeSave(input, id)
+    if (id && !checks.employeeExists) {
       throw new EmployeeError('notFound', 'Employé introuvable.')
     }
-    const byId = new Map(employees.map((employee) => [employee.id, employee]))
-    const visited = new Set<string>()
-    let ancestor = input.managerId
-    while (ancestor) {
-      if (ancestor === id || visited.has(ancestor)) {
-        throw new EmployeeError('invalid', 'Ce gestionnaire créerait une boucle hiérarchique.')
-      }
-      visited.add(ancestor)
-      ancestor = byId.get(ancestor)?.managerId
+    if (checks.managerCycle) {
+      throw new EmployeeError('invalid', 'Ce gestionnaire créerait une boucle hiérarchique.')
     }
-
-    if (!departments.some((department) => department.id === input.departmentId)) {
+    if (!checks.departmentExists) {
       throw new EmployeeError('invalid', 'Département introuvable.')
     }
-
-    if (input.managerId && !employees.some((employee) => employee.id === input.managerId)) {
+    if (!checks.managerExists) {
       throw new EmployeeError('invalid', 'Gestionnaire introuvable.')
     }
-
-    if (employees.some((employee) => employee.id !== id && employee.email.toLowerCase() === input.email)) {
+    if (checks.emailTaken) {
       throw new EmployeeError('conflict', 'Cette adresse courriel est déjà utilisée.')
     }
 

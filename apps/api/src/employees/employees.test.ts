@@ -101,6 +101,22 @@ describe('employee directory API', () => {
     })
   })
 
+  it('creates and updates a profile without loading either directory', async () => {
+    const repository = createMemoryEmployeeRepository()
+    const fullScan = async () => { throw new Error('Unexpected directory read') }
+    const app = createApp({ ...repository, listEmployees: fullScan, listDepartments: fullScan })
+    const request = {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newEmployee),
+    }
+    const created = await app.request('/api/employees', { ...request, method: 'POST' })
+    expect(created.status).toBe(201)
+    const { id } = await created.json()
+    const updated = await app.request('/api/employees/' + id, { ...request, method: 'PUT' })
+    expect(updated.status).toBe(200)
+    expect(await updated.json()).toMatchObject({ id, email: newEmployee.email })
+  })
+
   it('rejects an invalid email address', async () => {
     const response = await createApp(createMemoryEmployeeRepository()).request(
       '/api/employees',
