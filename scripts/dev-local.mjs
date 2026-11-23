@@ -12,7 +12,7 @@ if (!API_URL || !key || !['localhost', '127.0.0.1'].includes(new URL(API_URL).ho
   throw new Error('Configuration Supabase locale incomplète.')
 }
 for (const table of ['employees', 'departments', 'onboarding_tasks', 'audit_events', 'app_users', 'user_sessions']) {
-  const response = await fetch(new URL('/rest/v1/' + table + '?select=id&limit=1', API_URL), {
+  const response = await fetch(new URL('/rest/v1/' + table + '?limit=0', API_URL), {
     headers: { apikey: key, ...(SERVICE_ROLE_KEY ? { Authorization: 'Bearer ' + key } : {}) },
   })
   if (!response.ok) throw new Error('Table inaccessible : ' + table + ' (' + response.status + ')')
