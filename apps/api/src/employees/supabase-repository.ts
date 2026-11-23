@@ -2,7 +2,7 @@ import { EmployeeError } from './error.js'
 import { createClient } from '@supabase/supabase-js'
 import type {
   CreateEmployeeInput,
-  Department,
+  Department, DepartmentReport, EmployeeFilters, EmployeePage,
   Employee,
   EmployeeStatus,
   EmploymentType,
@@ -84,6 +84,16 @@ export function createSupabaseEmployeeRepository(
     }
   }
 
+  async function directoryPage(filters: EmployeeFilters, offset: number, size: number): Promise<EmployeePage> {
+    const { data, error } = await client.rpc('employee_directory_page', {
+      search_text: filters.query ?? '', department_filter: filters.departmentId ?? null,
+      status_filter: filters.status ?? null, page_offset: offset, page_size: size,
+    })
+    if (error) throw error
+    const page = data as { items: EmployeeProfileRow[]; total: number }
+    return { items: page.items.map(mapEmployee), total: page.total }
+  }
+
   function employeeValues(input: CreateEmployeeInput) {
     return {
       first_name: input.firstName,
@@ -113,6 +123,7 @@ export function createSupabaseEmployeeRepository(
   }
 
   function throwWriteError(error: { code: string; message: string }): never {
+    if (error.code === 'PF001') throw new EmployeeError('invalid', 'Ce gestionnaire créerait une boucle hiérarchique.')
     if (error.code === '23505' && error.message.includes('employees_email_key')) {
       throw new EmployeeError('conflict', 'Cette adresse courriel est déjà utilisée.')
     }
@@ -148,10 +159,19 @@ export function createSupabaseEmployeeRepository(
       if (!data) throw new EmployeeError('notFound', 'Employé introuvable.')
       return loadWrittenEmployee(data.id)
     },
-    async listEmployees() {
-      const { data, error } = await client.from('employee_profiles').select('*').order('last_name')
+    directoryPage,
+    async listEmployees(filters = {}) {
+      const employees: Employee[] = []
+      for (;;) {
+        const page = await directoryPage(filters, employees.length, 500)
+        employees.push(...page.items)
+        if (!page.items.length || employees.length >= page.total) return employees
+      }
+    },
+    async departmentReport() {
+      const { data, error } = await client.rpc('employee_department_report')
       if (error) throw error
-      return (data as EmployeeProfileRow[]).map(mapEmployee)
+      return data as DepartmentReport[]
     },
     getEmployee,
     listDepartments: fetchDepartments,

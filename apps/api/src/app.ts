@@ -35,6 +35,7 @@ export function createApp(
   app.route('/api/auth', authRoutes(auth))
   app.route('/api/employees', employeeController(new EmployeeService(repository)))
   app.route('/api/onboarding-tasks', onboardingController(repository))
+  app.get('/api/reports/departments', async (context) => context.json(await repository.departmentReport()))
   app.get('/api/activity', async (context) => context.json(await repository.listActivity()))
   app.get('/api/health', (context) => {
     const version = process.env.APP_VERSION

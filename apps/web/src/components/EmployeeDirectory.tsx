@@ -1,7 +1,7 @@
-import { filterEmployees } from '../../../../packages/domain/src/directory.js'
+import { searchEmployees } from '../api.js'
 import { Search, SlidersHorizontal, UserRoundPlus } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import type { Department, Employee, EmployeeStatus } from '../../../../packages/domain/src/types.js'
+import { useEffect, useState } from 'react'
+import type { Department, Employee, EmployeePage, EmployeeStatus } from '../../../../packages/domain/src/types.js'
 
 const statusLabels: Record<EmployeeStatus, string> = {
   active: 'Actif',
@@ -25,14 +25,12 @@ function formatHireDate(date: string): string {
 }
 
 interface EmployeeDirectoryProps {
-  employees: Employee[]
   departments: Department[]
   onSelectEmployee: (employee: Employee) => void
   onAddEmployee: () => void
 }
 
 export function EmployeeDirectory({
-  employees,
   departments,
   onSelectEmployee,
   onAddEmployee,
@@ -41,16 +39,28 @@ export function EmployeeDirectory({
   const [departmentId, setDepartmentId] = useState('all')
   const [status, setStatus] = useState('all')
 
-  const filteredEmployees = useMemo(() => filterEmployees(
-    employees, query, departmentId === 'all' ? undefined : departmentId,
-    status === 'all' ? undefined : status,
-  ), [employees, query, departmentId, status])
+  const limit = 50
+  const [offset, setOffset] = useState(0)
+  const [page, setPage] = useState<EmployeePage | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [retry, setRetry] = useState(0)
+  useEffect(() => {
+    let current = true
+    setPage(null)
+    setFailed(false)
+    searchEmployees({ query, departmentId: departmentId === 'all' ? undefined : departmentId,
+      status: status === 'all' ? undefined : status }, offset, limit).then((result) => {
+      if (current) setPage(result)
+    }).catch(() => { if (current) setFailed(true) })
+    return () => { current = false }
+  }, [query, departmentId, status, offset, retry])
+  const filteredEmployees = page?.items ?? []
 
   return (
     <div className="page-stack">
       <section className="page-heading directory-heading">
         <div>
-          <div className="eyebrow">VOTRE ORGANISATION <span className="eyebrow-dot" /> {employees.length} PERSONNES</div>
+          <div className="eyebrow">VOTRE ORGANISATION <span className="eyebrow-dot" /> {page?.total ?? '…'} PERSONNES</div>
           <h1>Annuaire des employés</h1>
           <p>Retrouvez les profils et les équipes au même endroit.</p>
         </div>
@@ -68,7 +78,7 @@ export function EmployeeDirectory({
               aria-label="Rechercher un employé"
               placeholder="Rechercher par nom, poste ou courriel…"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => { setOffset(0); setQuery(event.target.value) }}
             />
             <kbd>⌘ K</kbd>
           </label>
@@ -77,7 +87,7 @@ export function EmployeeDirectory({
             <select
               aria-label="Filtrer par département"
               value={departmentId}
-              onChange={(event) => setDepartmentId(event.target.value)}
+              onChange={(event) => { setOffset(0); setDepartmentId(event.target.value) }}
             >
               <option value="all">Tous les départements</option>
               {departments.map((department) => (
@@ -87,7 +97,7 @@ export function EmployeeDirectory({
             <select
               aria-label="Filtrer par statut"
               value={status}
-              onChange={(event) => setStatus(event.target.value)}
+              onChange={(event) => { setOffset(0); setStatus(event.target.value) }}
             >
               <option value="all">Tous les statuts</option>
               {Object.entries(statusLabels).map(([value, label]) => (
@@ -130,14 +140,14 @@ export function EmployeeDirectory({
                   <td><span className={`status-pill status-${employee.status}`}><span />{statusLabels[employee.status]}</span></td>
                 </tr>
               ))}
-              {filteredEmployees.length === 0 && (
+              {page && filteredEmployees.length === 0 && (
                 <tr>
                   <td colSpan={5}>
                     <div className="table-empty">
                       <div className="empty-icon"><Search size={21} /></div>
                       <strong>Aucun employé trouvé</strong>
                       <span>Essayez une autre recherche ou modifiez les filtres.</span>
-                      <button type="button" onClick={() => { setQuery(''); setDepartmentId('all'); setStatus('all') }}>
+                      <button type="button" onClick={() => { setOffset(0); setQuery(''); setDepartmentId('all'); setStatus('all') }}>
                         Effacer les filtres
                       </button>
                     </div>
@@ -149,7 +159,11 @@ export function EmployeeDirectory({
         </div>
 
         <div className="table-footer">
-          <span>Affichage de <strong>{filteredEmployees.length}</strong> sur <strong>{employees.length}</strong> employés</span>
+          {failed ? <span role="alert">Annuaire indisponible. <button onClick={() => setRetry(retry + 1)}>Réessayer</button></span>
+            : !page ? <span role="status">Chargement…</span>
+            : <span>{page.items.length ? offset + 1 : 0}–{offset + page.items.length} sur {page.total} employés</span>}
+          <button disabled={!offset} onClick={() => setOffset(Math.max(0, offset - limit))}>Précédent</button>
+          <button disabled={!page || offset + limit >= page.total} onClick={() => setOffset(offset + limit)}>Suivant</button>
         </div>
       </section>
     </div>
