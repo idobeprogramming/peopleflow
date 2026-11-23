@@ -1,7 +1,7 @@
+import type { EmployeeRepository } from './repository.js'
 import type {
   Activity,
   Department,
-  CreateEmployeeInput,
   Employee,
   OnboardingTask,
 } from '../../../../packages/domain/src/types.js'
@@ -189,17 +189,6 @@ const seedOnboardingTasks: OnboardingTask[] = [
   },
 ]
 
-export interface EmployeeRepository {
-  listEmployees(): Promise<Employee[]>
-  getEmployee(id: string): Promise<Employee | null>
-  listDepartments(): Promise<Department[]>
-  listOnboardingTasks(employeeId?: string): Promise<OnboardingTask[]>
-  setTaskStatus(id: string, status: 'done' | 'pending'): Promise<OnboardingTask | null>
-  listActivity(): Promise<Activity[]>
-  updateEmployee(id: string, input: CreateEmployeeInput): Promise<Employee>
-  createEmployee(input: CreateEmployeeInput): Promise<Employee>
-}
-
 export function createMemoryEmployeeRepository(
   initialEmployees: Employee[] = seedEmployees,
 ): EmployeeRepository {
@@ -211,6 +200,23 @@ export function createMemoryEmployeeRepository(
     activity.unshift({ id: crypto.randomUUID(), description, createdAt: new Date().toISOString() })
   }
   return {
+    async checkEmployeeSave(input, id) {
+      const byId = (key: string) => employees.find((employee) => employee.id === key)
+      const visited = new Set<string>()
+      let ancestor = input.managerId
+      while (ancestor && ancestor !== id && !visited.has(ancestor)) {
+        visited.add(ancestor)
+        ancestor = byId(ancestor)?.managerId
+      }
+      return {
+        employeeExists: !!id && !!byId(id),
+        departmentExists: departments.some((department) => department.id === input.departmentId),
+        managerExists: !input.managerId || !!byId(input.managerId),
+        managerCycle: !!ancestor,
+        emailTaken: employees.some((employee) => employee.id !== id
+          && employee.email.toLowerCase() === input.email.toLowerCase()),
+      }
+    },
     async listActivity() { return activity.slice(0, 10) },
     async setTaskStatus(id, status) {
       const task = tasks.find((item) => item.id === id)
